@@ -1,8 +1,8 @@
 // FocusLock background service worker — session state, tab-switch jail, blocklist enforcement.
 
 const DEFAULT_STATE = {
-  session: null, // { startedAt, endsAt, plannedMinutes, whitelist: [host...], studyTabIds: [tabId...], urgeLog: [] }
-  switches: 0,   // tab switches this session (study-tab switches are free, not counted)
+  session: null, // { startedAt, endsAt, plannedMinutes, whitelist: [...], studyTabs: [{id,title,url,host,favIcon,closed}], urgeLog: [{at,text,site}] }
+  switches: 0,   // tab switches this session (switches TO pinned study tabs are free, not counted)
   blocklist: [
     "instagram.com", "x.com", "twitter.com",
     "reddit.com", "facebook.com", "netflix.com", "discord.com",
@@ -28,9 +28,28 @@ function ytDistraction(url) {
   return YT_DISTRACTION_PATHS.some((re) => re.test(u.pathname));
 }
 
+// Pull a domain-looking token out of free text ("check instagram", "youtube.com shorts").
+function siteOf(text) {
+  const m = String(text || "").toLowerCase().match(/([a-z0-9][a-z0-9-]*\.)+[a-z]{2,}/);
+  return m ? m[0].replace(/^www\./, "") : "";
+}
+
 async function getState() {
   const stored = await chrome.storage.local.get(Object.keys(DEFAULT_STATE));
   return { ...DEFAULT_STATE, ...stored };
+}
+
+// Migrate legacy sessions that stored bare tab-id arrays.
+function studyList(session) {
+  if (!session) return [];
+  if (Array.isArray(session.studyTabs)) return session.studyTabs;
+  if (Array.isArray(session.studyTabIds)) {
+    session.studyTabs = session.studyTabIds
+      .filter((n) => Number.isInteger(n))
+      .map((id) => ({ id, title: "", url: "", host: "", favIcon: "", closed: false }));
+    return session.studyTabs;
+  }
+  return [];
 }
 
 // ---- session lifecycle ----
@@ -40,9 +59,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const now = Date.now();
       const minutes = msg.minutes || 120;
       const whitelist = (msg.whitelist || []).map((h) => h.trim().toLowerCase()).filter(Boolean);
-      const studyTabIds = Array.isArray(msg.studyTabIds) ? msg.studyTabIds.filter((n) => Number.isInteger(n)) : [];
+      const studyTabs = Array.isArray(msg.studyTabs)
+        ? msg.studyTabs.filter((t) => t && Number.isInteger(t.id))
+            .map((t) => ({ id: t.id, title: t.title || "", url: t.url || "", host: t.host || "", favIcon: t.favIcon || "", closed: false }))
+        : [];
+      const legacyIds = Array.isArray(msg.studyTabIds) ? msg.studyTabIds.filter((n) => Number.isInteger(n)) : [];
+      for (const id of legacyIds) {
+        if (studyTabs.some((t) => t.id === id)) continue;
+        let meta = { title: "", url: "", favIcon: "" };
+        try {
+          const t = await chrome.tabs.get(id);
+          meta = { title: t.title || "", url: t.url || "", favIcon: t.favIconUrl || "" };
+        } catch { /* tab gone */ }
+        studyTabs.push({ id, title: meta.title, url: meta.url, host: hostOf(meta.url || ""), favIcon: meta.favIcon, closed: false });
+      }
       await chrome.storage.local.set({
-        session: { startedAt: now, endsAt: now + minutes * 60 * 1000, plannedMinutes: minutes, whitelist, studyTabIds, urgeLog: [] },
+        session: { startedAt: now, endsAt: now + minutes * 60 * 1000, plannedMinutes: minutes, whitelist, studyTabs, urgeLog: [] },
         switches: 0,
       });
       chrome.alarms.create("focusEnd", { when: now + minutes * 60 * 1000 });
@@ -50,12 +82,28 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true });
     } else if (msg.type === "PIN_STUDY_TAB") {
       const st = await getState();
-      if (st.session && Number.isInteger(msg.tabId) && !st.session.studyTabIds.includes(msg.tabId)) {
-        st.session.studyTabIds.push(msg.tabId);
+      if (!st.session) { sendResponse({ ok: false, reason: "no-session" }); return; }
+      const tabs = studyList(st.session);
+      if (Number.isInteger(msg.tabId) && !tabs.some((t) => t.id === msg.tabId)) {
+        let meta = { title: msg.title || "", url: msg.url || "", favIcon: msg.favIcon || "" };
+        if ((!meta.url || !meta.title) && Number.isInteger(msg.tabId)) {
+          try {
+            const t = await chrome.tabs.get(msg.tabId);
+            meta = { title: t.title || meta.title, url: t.url || meta.url, favIcon: t.favIconUrl || meta.favIcon };
+          } catch { /* ignore */ }
+        }
+        tabs.push({ id: msg.tabId, title: meta.title, url: meta.url, host: msg.host || hostOf(meta.url || ""), favIcon: meta.favIcon, closed: false });
+        st.session.studyTabs = tabs;
         await chrome.storage.local.set({ session: st.session });
       }
-      const cur = await getState();
-      sendResponse({ ok: true, studyTabIds: cur.session ? cur.session.studyTabIds : [] });
+      sendResponse({ ok: true, studyTabs: studyList(st.session) });
+    } else if (msg.type === "UNPIN_STUDY_TAB") {
+      const st = await getState();
+      if (st.session) {
+        st.session.studyTabs = studyList(st.session).filter((t) => t.id !== msg.tabId);
+        await chrome.storage.local.set({ session: st.session });
+      }
+      sendResponse({ ok: true });
     } else if (msg.type === "END_SESSION") {
       await chrome.storage.local.set({ session: null });
       await chrome.alarms.clearAll();
@@ -63,13 +111,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg.type === "PARK_URGE") {
       const st = await getState();
       if (st.session) {
-        st.session.urgeLog.push({ at: Date.now(), text: String(msg.text || "").slice(0, 200) });
+        const text = String(msg.text || "").slice(0, 200);
+        st.session.urgeLog.push({ at: Date.now(), text, site: siteOf(text) });
         await chrome.storage.local.set({ session: st.session });
         sendResponse({ ok: true, count: st.session.urgeLog.length });
       } else sendResponse({ ok: false });
     } else if (msg.type === "GET_STATUS") {
       const st = await getState();
-      sendResponse({ session: st.session, switches: st.switches, blocklist: st.blocklist });
+      if (st.session) {
+        // Refresh pinned-tab identities live; mark closed tabs instead of dropping them.
+        const fresh = [];
+        for (const p of studyList(st.session)) {
+          try {
+            const t = await chrome.tabs.get(p.id);
+            fresh.push({
+              id: p.id,
+              title: t.title || p.title || "",
+              url: t.url || p.url || "",
+              host: hostOf(t.url || p.url || ""),
+              favIcon: t.favIconUrl || p.favIcon || "",
+              closed: false,
+            });
+          } catch {
+            fresh.push({ ...p, closed: true });
+          }
+        }
+        st.session.studyTabs = fresh;
+        await chrome.storage.local.set({ session: st.session });
+      }
+      const cur = await getState();
+      sendResponse({ session: cur.session, switches: cur.switches, blocklist: cur.blocklist });
     }
   })();
   return true;
@@ -127,11 +198,13 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // Tab-Switch Jail: every switch during a session bounces back with escalating delay.
 // Switches TO a pinned study tab are free (studying from 2 tabs is normal).
+// Pinning exempts the *switch*, never the *content*: blocklist + YT guard still apply.
 let jailUntil = 0;
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   const st = await getState();
   if (!st.session) return;
-  if (st.session.studyTabIds && st.session.studyTabIds.includes(tabId)) return; // study tab: no count, no jail
+  const pinnedIds = studyList(st.session).filter((t) => !t.closed).map((t) => t.id);
+  if (pinnedIds.includes(tabId)) return; // study tab: no count, no jail
   const n = (st.switches || 0) + 1;
   await chrome.storage.local.set({ switches: n });
   const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -142,7 +215,8 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   // Jail: 3s + 2s per 5 switches, capped 20s. Feels annoying, not broken.
   const jailMs = Math.min(3000 + Math.floor(n / 5) * 2000, 20000);
   jailUntil = Date.now() + jailMs;
+  const fromHost = hostOf(url || "");
   chrome.tabs.update(tabId, {
-    url: chrome.runtime.getURL("jail.html") + `?n=${n}&wait=${Math.round(jailMs / 1000)}`,
+    url: chrome.runtime.getURL("jail.html") + `?n=${n}&wait=${Math.round(jailMs / 1000)}&from=` + encodeURIComponent(fromHost),
   });
 });

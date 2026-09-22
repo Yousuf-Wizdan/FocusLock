@@ -1,45 +1,102 @@
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><style>
-body { font-family: system-ui, sans-serif; width: 300px; padding: 16px; margin: 0; background: #0f172a; color: #e2e8f0; }
-h2 { margin: 0 0 4px; font-size: 17px; }
-.sub { color: #94a3b8; font-size: 12px; margin-bottom: 12px; }
-#status { background: #1e293b; border-radius: 8px; padding: 10px; font-size: 13px; margin-bottom: 12px; }
-#status b { color: #fbbf24; font-size: 18px; }
-label { font-size: 12px; color: #94a3b8; display:block; margin: 8px 0 4px; }
-input, textarea { width: 100%; box-sizing: border-box; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 7px; font-size: 13px; }
-.row { display: flex; gap: 8px; margin-top: 10px; }
-button { flex: 1; padding: 9px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; }
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; width: 340px; padding: 0; margin: 0; background: #0f172a; color: #e2e8f0; }
+header { padding: 14px 16px 10px; border-bottom: 1px solid #1e293b; }
+header h2 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #64748b; flex: none; }
+.dot.live { background: #22c55e; box-shadow: 0 0 8px #22c55e; animation: pulse 2s infinite; }
+@keyframes pulse { 50% { opacity: .5; } }
+.sub { color: #94a3b8; font-size: 11.5px; margin-top: 3px; }
+main { padding: 12px 16px 14px; }
+section { margin-bottom: 12px; }
+.cards { display: flex; gap: 8px; }
+.stat { flex: 1; background: #1e293b; border: 1px solid #263349; border-radius: 10px; padding: 8px 10px; text-align: center; }
+.stat .v { font-size: 19px; font-weight: 800; color: #fbbf24; }
+.stat .v.green { color: #4ade80; }
+.stat .v.blue { color: #38bdf8; }
+.stat .k { font-size: 10.5px; color: #94a3b8; margin-top: 1px; }
+.progress { height: 6px; background: #1e293b; border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.progress i { display: block; height: 100%; background: linear-gradient(90deg, #22c55e, #4ade80); border-radius: 99px; transition: width .5s; }
+h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #64748b; margin: 0 0 6px; }
+.studytab { display: flex; align-items: center; gap: 9px; background: #14532d22; border: 1px solid #22c55e44; border-radius: 10px; padding: 8px 10px; margin-bottom: 6px; }
+.studytab img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+.studytab .t { flex: 1; min-width: 0; }
+.studytab .t b { display: block; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.studytab .t span { font-size: 11px; color: #4ade80; }
+.studytab .t span.closed { color: #f87171; }
+.studytab button { flex: none; background: none; border: none; color: #64748b; cursor: pointer; font-size: 14px; padding: 2px 4px; }
+.studytab button:hover { color: #f87171; }
+.empty { font-size: 12px; color: #94a3b8; background: #1e293b66; border: 1px dashed #334155; border-radius: 10px; padding: 9px 10px; }
+.urge { display: flex; align-items: flex-start; gap: 8px; background: #1e293b66; border-radius: 8px; padding: 7px 9px; margin-bottom: 5px; font-size: 12px; }
+.urge .ago { color: #64748b; font-size: 10.5px; white-space: nowrap; margin-left: auto; flex: none; }
+.urge .site { color: #0ea5e9; font-size: 10.5px; }
+.urge b { color: #e2e8f0; }
+.urge .col { min-width: 0; }
+label { font-size: 11px; color: #94a3b8; display: block; margin: 0 0 4px; }
+input[type=number], textarea, input[type=text] { width: 100%; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 8px; padding: 7px 9px; font-size: 12.5px; font-family: inherit; }
+input:focus, textarea:focus { outline: none; border-color: #22c55e; }
+.row { display: flex; gap: 8px; }
+.btn { flex: 1; padding: 10px; border: none; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.btn:active { transform: scale(.97); }
+.btn:disabled { opacity: .45; cursor: default; }
 #start { background: #22c55e; color: #052e16; }
-#stop { background: #334155; color: #e2e8f0; }
-#park { background: #0ea5e9; color: #041c2c; margin-top: 8px; width: 100%; }
-#urges { font-size: 12px; color: #94a3b8; margin-top: 8px; max-height: 90px; overflow: auto; }
-#urges div { padding: 3px 0; border-bottom: 1px solid #1e293b; }
-.hint { font-size: 11px; color: #64748b; margin-top: 10px; }
+#pin { background: #0ea5e9; color: #041c2c; }
+#stop { background: #334155; color: #e2e8f0; flex: 0 0 76px; }
+#setrow { margin-top: 8px; }
+.hint { font-size: 10.5px; color: #64748b; margin-top: 8px; line-height: 1.5; }
+details { margin-top: 4px; }
+details summary { font-size: 11.5px; color: #64748b; cursor: pointer; }
+footer { padding: 0 16px 12px; }
 </style></head>
 <body>
-<h2>🔒 FocusLock</h2>
-<div class="sub">2-hour study guard — YouTube watch stays open, Shorts/feed blocked</div>
-<div id="status">Loading…</div>
-<label>Session length (minutes)</label>
-<input id="minutes" type="number" value="120" min="25" max="240">
-<label>Allow during session (one domain per line) — e.g. your study site</label>
-<textarea id="whitelist" rows="3" placeholder="docs.google.com&#10;coursera.org"></textarea>
-<div class="row">
-  <button id="pin">📌 This tab is study</button>
-</div>
-<div id="studyTabs" style="font-size:12px;color:#94a3b8;margin-top:6px"></div>
-<div class="row">
-  <button id="start">Start session</button>
-  <button id="stop">End</button>
-</div>
-<label>Urge hitting? Park it, don't open it 👇</label>
-<div class="row" style="margin-top:0">
-  <input id="urge" placeholder="e.g. check instagram">
-  <button id="park" style="flex:0 0 70px">Park</button>
-</div>
-<div id="urges"></div>
-<div class="hint">Switches to pinned study tabs are free. Everything else bounces to a wait screen and gets counted. YouTube watch/search/playlist stay open; Shorts, home, trending, explore get blocked.</div>
+<header>
+  <h2><span id="dot" class="dot"></span>🔒 FocusLock</h2>
+  <div class="sub">YouTube watch stays open · Shorts &amp; feed blocked</div>
+</header>
+<main>
+  <section>
+    <div class="cards">
+      <div class="stat"><div class="v green" id="sTime">–</div><div class="k">min left</div></div>
+      <div class="stat"><div class="v" id="sSwitch">0</div><div class="k">tab switches</div></div>
+      <div class="stat"><div class="v blue" id="sUrge">0</div><div class="k">urges parked</div></div>
+    </div>
+    <div class="progress"><i id="bar" style="width:0%"></i></div>
+  </section>
+
+  <section>
+    <h3>📚 Study tabs <span id="pinCount"></span></h3>
+    <div id="studyList"></div>
+  </section>
+
+  <section>
+    <div class="row">
+      <button class="btn" id="pin" title="Pin the tab you're on right now as a study tab">📌 Pin this tab</button>
+      <button class="btn" id="start">▶ Start 2-hr</button>
+      <button class="btn" id="stop" style="display:none">End</button>
+    </div>
+    <div class="row" id="setrow">
+      <div style="flex:1"><label>Minutes</label><input id="minutes" type="number" value="120" min="25" max="240"></div>
+      <div style="flex:2"><label>Extra allowed domains</label><input id="whitelist" type="text" placeholder="docs.google.com, coursera.org"></div>
+    </div>
+  </section>
+
+  <section>
+    <h3>🅿️ Park an urge</h3>
+    <div class="row">
+      <input id="urge" type="text" placeholder="e.g. check instagram…" style="flex:1">
+      <button class="btn" id="park" style="flex:0 0 74px;background:#0ea5e9;color:#041c2c">Park</button>
+    </div>
+    <div id="urges" style="margin-top:8px"></div>
+  </section>
+
+  <details>
+    <summary>How it works</summary>
+    <div class="hint">Pinned study tabs are free to switch between — their <b>title + site</b> show above so you always know what's pinned. Every other switch hits a wait screen and gets counted. YouTube lectures, search, playlists and channels stay open; only Shorts, home, trending &amp; explore get blocked. Parked urges show the <b>site you named</b> and unlock after the session.</div>
+  </details>
+</main>
 <script src="popup.js"></script>
 </body>
 </html>
