@@ -1,33 +1,40 @@
 <!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Locked — FocusLock</title>
+<html lang="en">
+<head><meta charset="utf-8"><title>On hold — back in a moment</title>
 <style>
-body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; }
-.card { text-align: center; max-width: 460px; padding: 40px 32px; background: #1e293b55; border: 1px solid #334155; border-radius: 20px; }
-.big { font-size: 72px; }
-h1 { font-size: 24px; margin: 10px 0 6px; }
-p { color: #94a3b8; font-size: 14px; }
-#count { font-size: 60px; font-weight: 800; color: #fbbf24; }
-.dest { display: inline-flex; align-items: center; gap: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 8px 14px; margin-top: 10px; font-size: 13.5px; color: #cbd5e1; max-width: 100%; }
+/* Jail page: a waiting room with a visible reason, not a scolding screen.
+   Same paper theme as the popup. Countdown is the hierarchy. */
+body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #F5F1E8; color: #1C1917; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
+.card { max-width: 440px; background: #FFFFFF; border: 1px solid #E2D9C3; border-left: 4px solid #B45309; border-radius: 0 8px 8px 0; padding: 28px 30px; }
+.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #B45309; margin: 0 0 6px; }
+h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
+#count { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin: 6px 0 2px; }
+p { color: #57534E; margin: 0 0 12px; font-size: 13.5px; }
+.dest { display: flex; align-items: center; gap: 8px; background: #F5F1E8; border: 1px solid #E2D9C3; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 14px; }
 .dest span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button { margin-top: 18px; padding: 11px 26px; border: none; border-radius: 10px; background: #22c55e; color: #052e16; font-weight: 700; font-size: 14px; cursor: pointer; }
+button { width: 100%; padding: 10px; border-radius: 6px; background: #1C1917; color: #FAF7F0; border: 1px solid #1C1917; font-weight: 650; font-size: 13.5px; cursor: pointer; font-family: inherit; }
+button:focus-visible { outline: 2px solid #1B5E3B; outline-offset: 2px; }
+small { color: #A8A29E; display: block; margin-top: 10px; font-size: 11.5px; }
 </style></head>
 <body>
 <div class="card">
-  <div class="big">🔒</div>
-  <h1>This tab is jailed</h1>
-  <p>Tab-switch <b id="n"></b> detected — you wandered to <b id="where">…</b>. Back to study in…</p>
-  <div id="count">3</div>
-  <div><span class="dest">📍 <span id="host">…</span></span></div>
-  <p>Every switch is counted. Your future self is watching.</p>
-  <button id="back">← Back to study tab</button>
+  <p class="kicker">Tab switch <span id="n"></span> · counted</p>
+  <h1>Hold on — back to the lecture?</h1>
+  <div id="count" role="timer">3</div>
+  <div class="dest">You wandered to <span id="host">…</span></div>
+  <p id="note">Pinned study tabs are always free to switch to. Everything else waits a few seconds, so autopilot switching stops paying off.</p>
+  <button id="back">Back to study</button>
+  <small id="total"></small>
 </div>
 <script>
 const q = new URLSearchParams(location.search);
 document.getElementById("n").textContent = "#" + (q.get("n") || "?");
 const host = q.get("from") || "an unknown tab";
-document.getElementById("where").textContent = host;
 document.getElementById("host").textContent = host;
+const n = parseInt(q.get("n")) || 1;
+document.getElementById("total").textContent = n === 1
+  ? "First switch. No judgment — data, not guilt."
+  : n < 5 ? `${n} switches this session.` : `${n} switches. The wait grows because the habit is expensive.`;
 let s = parseInt(q.get("wait")) || 3;
 const el = document.getElementById("count");
 el.textContent = s;

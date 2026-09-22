@@ -1,16 +1,19 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head><meta charset="utf-8"><style>
-body { font-family: system-ui, sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; background: #0f172a; color: #e2e8f0; }
-textarea { width: 100%; box-sizing: border-box; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 8px; }
-button { margin-top: 10px; padding: 9px 20px; border: none; border-radius: 8px; background: #22c55e; color: #052e16; font-weight: 700; cursor: pointer; }
-p { color: #94a3b8; font-size: 13px; }
+body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width: 560px; margin: 40px auto; padding: 0 20px; background: #F5F1E8; color: #1C1917; font-size: 13.5px; line-height: 1.6; }
+h2 { font-size: 18px; letter-spacing: -0.01em; margin: 0 0 4px; }
+p { color: #57534E; }
+textarea { width: 100%; box-sizing: border-box; background: #FFFFFF; border: 1px solid #D6CCB2; color: #1C1917; border-radius: 6px; padding: 9px 11px; font-family: inherit; font-size: 13px; }
+textarea:focus { outline: 2px solid #1B5E3B55; border-color: #1B5E3B; }
+button { margin-top: 10px; padding: 9px 22px; border: 1px solid #1C1917; border-radius: 6px; background: #1C1917; color: #FAF7F0; font-weight: 650; font-size: 13px; cursor: pointer; font-family: inherit; }
+button:focus-visible { outline: 2px solid #1B5E3B; outline-offset: 2px; }
 </style></head>
 <body>
-<h2>🔒 FocusLock — blocklist</h2>
-<p>One domain per line. These are blocked during every session (unless you whitelist them for that session).</p>
-<textarea id="bl" rows="12"></textarea><br>
-<button id="save">Save</button> <span id="ok"></span>
+<h2>FocusLock blocklist</h2>
+<p>One domain per line. Blocked in every session unless you allow it for that session.</p>
+<textarea id="bl" rows="12" aria-label="Blocked domains, one per line"></textarea><br>
+<button id="save">Save</button> <span id="ok" role="status"></span>
 <script>
 (async () => {
   const st = await chrome.storage.local.get(["blocklist"]);
@@ -18,7 +21,7 @@ p { color: #94a3b8; font-size: 13px; }
   document.getElementById("save").onclick = async () => {
     const list = document.getElementById("bl").value.split("\n").map((s) => s.trim().toLowerCase()).filter(Boolean);
     await chrome.storage.local.set({ blocklist: list });
-    document.getElementById("ok").textContent = "✓ saved";
+    document.getElementById("ok").textContent = "Saved.";
     setTimeout(() => document.getElementById("ok").textContent = "", 2000);
   };
 })();
