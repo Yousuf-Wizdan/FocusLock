@@ -3,7 +3,7 @@
   "name": "FocusLock - 2 Hour Study Guard",
   "version": "1.0.0",
   "description": "Strict 2-hour focus sessions. Blocks distractions, counts tab-switches, hard to quit.",
-  "permissions": ["tabs", "storage", "alarms", "notifications"],
+  "permissions": ["tabs", "storage", "alarms", "notifications", "webNavigation"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

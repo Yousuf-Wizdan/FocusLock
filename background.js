@@ -1,7 +1,7 @@
 // FocusLock background service worker — sessions with enforced breaks,
 // tab-switch jail, blocklist + YouTube study guard, search-spiral tripwire.
 
-const BLOCKLIST_VERSION = 2;
+const BLOCKLIST_VERSION = 3;
 const DEFAULT_BLOCKLIST = [
   // Social / doomscroll
   "instagram.com", "x.com", "twitter.com", "threads.net",
@@ -335,33 +335,48 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 // ---- enforcement: blocklist + Tab-Switch Jail ----
 function hostOf(url) {
-  try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
+  try {
+    return new URL(url).hostname.toLowerCase()
+      .replace(/^www\./, "")
+      .replace(/^(m|mobile|new|old|beta|touch|i)\./, "");
+  } catch { return ""; }
 }
 
-// Match a host against the blocklist. Suffix match covers subdomains
-// (m., new., old., pro.), but bare "facebook" in a hostname only counts
-// when it is the registrable domain — mobile.facebook.com yes,
-// notfacebook.com and myfacebookclone.com no.
+// Exact-or-subdomain match only. Suffix matching on the full entry
+// ("facebook.com") already covers every real subdomain (m., mobile., new.,
+// pro., touch.). Anything outside that is either open or a different domain —
+// never match on bare substrings, so notfacebook.com stays open.
 function hostBlocked(host, st) {
   for (const b of st.blocklist) {
     if (host === b || host.endsWith("." + b)) return b;
-    const base = b.split(".")[0];
-    if (base.length >= 4 && host.includes(base)) {
-      // Suspicious lookalikes (m.facebook.com.attacker.com): still check the
-      // registrable tail — block only when the tail itself is the entry.
-      const tail = host.split(".").slice(-b.split(".").length).join(".");
-      if (tail === b) return b;
-    }
   }
   return null;
 }
 
-function isAllowed(url, st) {
+// One verdict for every URL. Single source of truth — background tabs events,
+// webNavigation events, and content.js all apply the same answer:
+// { verdict: "open" } or { verdict: "blocked", rule: "blocklist"|"youtube", entry? }.
+function decide(url, st) {
+  if (!st.session || !url) return { verdict: "open" };
   const host = hostOf(url);
-  if (!host) return true;
-  if (!hostBlocked(host, st)) return true;
-  if (st.session && st.session.whitelist.some((w) => host === w || host.endsWith("." + w))) return true;
-  return false;
+  if (!host) return { verdict: "open" };
+  if (hostBlocked(host, st) && !whitelisted(host, st)) {
+    return { verdict: "blocked", rule: "blocklist", entry: hostBlocked(host, st) };
+  }
+  if (ytDistraction(url)) return { verdict: "blocked", rule: "youtube" };
+  return { verdict: "open" };
+}
+
+function whitelisted(host, st) {
+  return st.session && st.session.whitelist.some((w) => host === w || host.endsWith("." + w));
+}
+
+function blockedPage(rule, url) {
+  return chrome.runtime.getURL("blocked.html") + "?from=" + encodeURIComponent(url) + (rule === "youtube" ? "&why=yt" : "");
+}
+
+function isAllowed(url, st) {
+  return decide(url, st).verdict === "open";
 }
 
 // True while the session is in its enforced break (jail + counting paused, blocks stay on).
@@ -373,14 +388,40 @@ function inBreak(st) {
 
 async function enforce(tabId, url, st) {
   st = st || (await getState());
-  if (!st.session || !url) return;
-  if (!isAllowed(url, st)) {
-    await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("blocked.html") + "?from=" + encodeURIComponent(url) });
-  } else if (ytDistraction(url)) {
-    // YouTube study guard: watch/search stay open, Shorts/feed/trending bounce.
-    await chrome.tabs.update(tabId, { url: chrome.runtime.getURL("blocked.html") + "?from=" + encodeURIComponent(url) + "&why=yt" });
+  const v = decide(url, st);
+  if (v.verdict === "blocked") {
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.url && tab.url.startsWith(chrome.runtime.getURL("blocked.html"))) return; // already bounced
+    } catch { /* tab gone */ }
+    await chrome.tabs.update(tabId, { url: blockedPage(v.rule, url) });
   }
 }
+
+// Covers navigations tabs.onUpdated misses: back/forward restores, prerender
+// swaps, single-page-app history pushes, new-tab commits. Tabs events stay as
+// the fallback; this is the authoritative net (needs "webNavigation" permission).
+function wireNavigation() {
+  if (!chrome.webNavigation || !chrome.webNavigation.onCommitted) return false;
+  const bounce = (details) => {
+    if (details.frameId !== 0) return; // top frame only
+    (async () => {
+      const st = await getState();
+      const v = decide(details.url, st);
+      if (v.verdict === "blocked") {
+        try {
+          const tab = await chrome.tabs.get(details.tabId);
+          if (tab.url && tab.url.startsWith(chrome.runtime.getURL("blocked.html"))) return;
+        } catch { /* tab gone */ }
+        chrome.tabs.update(details.tabId, { url: blockedPage(v.rule, details.url) }).catch(() => {});
+      }
+    })();
+  };
+  chrome.webNavigation.onCommitted.addListener(bounce);
+  chrome.webNavigation.onHistoryStateUpdated.addListener(bounce);
+  return true;
+}
+wireNavigation();
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   (async () => {
@@ -420,8 +461,7 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   if (!st.session) return;
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   const url = tab ? tab.url : null;
-  if (url && !isAllowed(url, st)) { enforce(tabId, url, st); return; }
-  if (url && ytDistraction(url)) { enforce(tabId, url, st); return; }
+  if (url && decide(url, st).verdict === "blocked") { enforce(tabId, url, st); return; }
   if (inBreak(st)) return; // break: free movement, blocks already handled above
   const pinnedIds = studyList(st.session).filter((t) => !t.closed).map((t) => t.id);
   if (pinnedIds.includes(tabId)) return; // study tab: no count, no jail
