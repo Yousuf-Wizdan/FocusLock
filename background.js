@@ -298,7 +298,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           entry.favIcon = entry.favIcon || t.favIconUrl || "";
         } catch { /* tab gone */ }
       }
+      // Blocked pages can never be pinned: the redirect target (blocked.html)
+      // would otherwise launder a distraction into an allowed tab.
+      if (!entry.url || /(^|\/)blocked\.html($|[?#])/.test(entry.url)) {
+        sendResponse({ ok: false, reason: "blocked-page" });
+        return;
+      }
+      const entryHost = entry.host || hostOf(entry.url);
       if (st.session) {
+        // Live session: pin straight into it, but only if the page is allowed.
+        // decide() is the same single verdict the blockers use.
+        if (decide(entry.url, st).verdict === "blocked") {
+          sendResponse({ ok: false, reason: "blocked-site", host: entryHost });
+          return;
+        }
         // Live session: pin straight into it.
         const tabs = studyList(st.session);
         if (!tabs.some((t) => t.id === entry.id)) {
@@ -308,6 +321,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         sendResponse({ ok: true, studyTabs: studyList(st.session), pending: false });
       } else {
+        // Idle: check against the stored blocklist so a distraction pinned now
+        // can't sneak into the next session via the tray.
+        const bl = st.blocklist || [];
+        const blockedEntry = bl.some((b) => entryHost === b || entryHost.endsWith("." + b));
+        if (blockedEntry || ytDistraction(entry.url)) {
+          sendResponse({ ok: false, reason: "blocked-site", host: entryHost });
+          return;
+        }
         // Idle: hold it in the tray until Start merges it in.
         const stored = await chrome.storage.local.get(["pendingPins"]);
         const tray = Array.isArray(stored.pendingPins) ? stored.pendingPins : [];

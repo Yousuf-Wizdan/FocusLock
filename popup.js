@@ -209,7 +209,10 @@ document.querySelectorAll(".preset").forEach((b) => {
 async function pinCurrentTab() {
   const meta = await curTabMeta();
   if (!meta) return;
-  await chrome.runtime.sendMessage({ type: "PIN_STUDY_TAB", ...meta }).catch(() => null);
+  const res = await chrome.runtime.sendMessage({ type: "PIN_STUDY_TAB", ...meta }).catch(() => null);
+  if (res && !res.ok && res.reason === "blocked-site") {
+    alert(`${res.host || "This site"} is blocked during focus — it can't be pinned as a study tab.`);
+  }
   refresh();
 }
 
