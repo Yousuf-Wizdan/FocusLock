@@ -35,16 +35,56 @@ async function refresh() {
   $("pin").disabled = false;
 
   if (live) {
-    const total = session.endsAt - session.startedAt;
-    const leftMs = session.endsAt - Date.now();
-    $("sTime").textContent = fmtClock(leftMs);
+    const s = session;
+    const isBreak = Array.isArray(s.phases) && s.phases[s.phaseIndex]
+      ? s.phases[s.phaseIndex].type === "break"
+      : false;
+    const anchor = isBreak ? s.phaseEndsAt : s.endsAt;
+    const denom = isBreak
+      ? Math.max(1, s.phaseEndsAt - (s.phaseStartedAt || (s.phaseEndsAt - 10 * 60000)))
+      : (s.endsAt - s.startedAt);
+    $("sTimeK").textContent = isBreak ? "break left" : "left";
+    $("sTime").textContent = fmtClock(anchor - Date.now());
+    $("sTime").className = "v " + (isBreak ? "" : "green");
+    $("sTime").style.color = isBreak ? "#fbbf24" : "";
     $("sSwitch").textContent = switches;
-    $("sUrge").textContent = (session.urgeLog || []).length;
-    $("bar").style.width = Math.min(100, Math.max(0, ((total - leftMs) / total) * 100)) + "%";
-    const endAt = new Date(session.endsAt);
-    $("eta").textContent = `ends ${endAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · live countdown while open`;
+    $("sUrge").textContent = (s.urgeLog || []).length;
+    $("bar").style.width = Math.min(100, Math.max(0, ((denom - (anchor - Date.now())) / denom) * 100)) + "%";
+    const endAt = new Date(s.endsAt);
+    $("eta").textContent = `session ends ${endAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · live countdown while open`;
 
-    const tabs = session.studyTabs || [];
+    // Phase banner: Focus 1 of 2 / Break, upcoming phases, skip-break during break.
+    const phases = Array.isArray(s.phases) ? s.phases : [{ type: "focus", minutes: s.plannedMinutes || 120 }];
+    const idx = Math.min(s.phaseIndex || 0, phases.length - 1);
+    const cur = phases[idx];
+    const focuses = phases.filter((p) => p.type === "focus").length;
+    const focusNo = phases.slice(0, idx + 1).filter((p) => p.type === "focus").length;
+    const upcoming = phases.slice(idx + 1).map((p) => `${p.minutes}m ${p.type}`).join(" → ");
+    const phaseLeft = fmtClock((s.phaseEndsAt || s.endsAt) - Date.now());
+    $("phaseLine").innerHTML = cur.type === "break"
+      ? `<div class="phase break">☕ Break — ${phaseLeft} left, step away from the screen<span class="next">${upcoming ? "Next: " + esc(upcoming) : ""} · jail paused, blocks stay on</span></div>
+         <div class="row" style="margin-top:6px"><button class="btn" id="skipBreak" style="background:#f59e0b;color:#451a03">Skip break → focus</button></div>`
+      : `<div class="phase focus">${focuses > 1 ? `🟢 Focus ${focusNo} of ${focuses}` : "🟢 Focus"} — ${phaseLeft} left${isBreak ? "" : ""}<span class="next">${upcoming ? "Up next: " + esc(upcoming) : "Final stretch — finish strong"}</span></div>`;
+    const skipBtn = $("skipBreak");
+    if (skipBtn) skipBtn.onclick = async () => {
+      if (!confirm("Skip the break? Your brain consolidates during rest — skipping is allowed but logged.")) return;
+      await chrome.runtime.sendMessage({ type: "SKIP_BREAK" });
+      refresh();
+    };
+
+    // Search-spiral meter: recent YouTube searches in the 5-min window.
+    const slog = (s.searchLog || []).filter((e) => Date.now() - e.at < 5 * 60000);
+    const sbox = $("searchNote");
+    if (slog.length >= 2) {
+      const last = slog[slog.length - 1];
+      sbox.style.display = "";
+      sbox.innerHTML = `🔎 <b>${slog.length} YouTube searches</b> in 5 min${last && last.query ? ` · latest: “${esc(last.query)}”` : ""}${slog.length >= 4 ? " — spiral risk, back to the lecture?" : " — lecture-driven is fine, spiral isn't."}`;
+    } else sbox.style.display = "none";
+
+    const planTxt = phases.map((p) => `${p.minutes}m ${p.type}`).join(" → ");
+    $("planLine").textContent = `Plan: ${planTxt} · YT watch open, Shorts/feed blocked`;
+
+    const tabs = s.studyTabs || [];
     $("pinCount").textContent = tabs.length ? `(${tabs.length})` : "";
     $("studyList").innerHTML = tabs.length
       ? tabs.map((t) => `
@@ -68,10 +108,16 @@ async function refresh() {
       : `<div class="empty">Nothing parked. When an urge hits, type it instead of opening it.</div>`;
   } else {
     $("sTime").textContent = "–";
+    $("sTime").className = "v";
+    $("sTime").style.color = "";
+    $("sTimeK").textContent = "left";
     $("sSwitch").textContent = "0";
     $("sUrge").textContent = "0";
     $("bar").style.width = "0%";
+    $("phaseLine").innerHTML = "";
+    $("searchNote").style.display = "none";
     $("eta").textContent = "";
+    $("planLine").textContent = "YouTube watch stays open · Shorts & feed blocked";
     $("pinCount").textContent = "";
     $("studyList").innerHTML = `<div class="empty">Start a session first — the tab you're on gets pinned automatically. Pin more tabs any time with <b>📌 Pin this tab</b>.</div>`;
     $("urges").innerHTML = `<div class="empty">Parked urges appear here with the site you named.</div>`;
@@ -95,11 +141,14 @@ function curTabMeta() {
 }
 
 $("start").onclick = async () => {
+  const minutes = parseInt($("minutes").value) || 120;
+  const plan = minutes >= 70 ? `${minutes} min = 50 focus → 10 break → ${minutes - 60} focus. OK?` : `${minutes} min single focus block, no break. OK?`;
+  if (!confirm(`Start session? ${plan}`)) return;
   const whitelist = $("whitelist").value.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
   const meta = await curTabMeta();
   await chrome.runtime.sendMessage({
     type: "START_SESSION",
-    minutes: parseInt($("minutes").value) || 120,
+    minutes,
     whitelist,
     studyTabs: meta ? [meta] : [],
   });
@@ -140,15 +189,24 @@ setInterval(tick, 1000);
 setInterval(refresh, 15000);
 
 // Lightweight 1s tick: countdown + progress bar only, no re-render (no flicker).
+// During breaks the anchor is the break end (amber); otherwise the session end.
 let cached = null;
 async function tick() {
   try {
     if (!cached || !cached.session) return;
-    const leftMs = cached.session.endsAt - Date.now();
-    if (leftMs <= 0) { refresh(); cached = null; return; }
+    const s = cached.session;
+    const isBreak = Array.isArray(s.phases) && s.phases[s.phaseIndex]
+      ? s.phases[s.phaseIndex].type === "break"
+      : false;
+    const anchor = isBreak ? s.phaseEndsAt : s.endsAt;
+    const leftMs = anchor - Date.now();
+    if (s.endsAt - Date.now() <= 0) { refresh(); cached = null; return; }
+    if (leftMs <= 0) { refresh(); return; }
     $("sTime").textContent = fmtClock(leftMs);
-    const total = cached.session.endsAt - cached.session.startedAt;
-    $("bar").style.width = Math.min(100, Math.max(0, ((total - leftMs) / total) * 100)) + "%";
+    const denom = isBreak
+      ? Math.max(1, anchor - (s.phaseStartedAt || (anchor - 10 * 60000)))
+      : (s.endsAt - s.startedAt);
+    $("bar").style.width = Math.min(100, Math.max(0, ((denom - leftMs) / denom) * 100)) + "%";
   } catch { /* ignore */ }
 }
 const _refresh = refresh;
