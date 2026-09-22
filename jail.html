@@ -3,19 +3,19 @@
 <head><meta charset="utf-8">
 <link rel="stylesheet" href="fonts/fonts.css"><title>On hold — back in a moment</title>
 <style>
-/* Jail page: a waiting room with a visible reason, not a scolding screen.
-   Same paper theme as the popup. Countdown is the hierarchy. */
-body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #F5F1E8; color: #1C1917; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
-.card { max-width: 440px; background: #FFFFFF; border: 1px solid #E2D9C3; border-left: 4px solid #B45309; border-radius: 0 8px 8px 0; padding: 28px 30px; }
-.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #B45309; margin: 0 0 6px; }
-h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
-#count { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; margin: 6px 0 2px; }
-p { color: #57534E; margin: 0 0 12px; font-size: 13.5px; }
-.dest { display: flex; align-items: center; gap: 8px; background: #F5F1E8; border: 1px solid #E2D9C3; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 14px; }
+:root { color-scheme: dark; }
+body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #14120F; color: #EDE8DE; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
+.card { max-width: 420px; width: 100%; background: #1D1A16; border: 1px solid #2E2A23; border-radius: 8px; padding: 24px; }
+.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #E2A63B; margin: 0 0 6px; }
+h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+#count { font-size: 48px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+p { color: #A39E93; margin: 0 0 12px; font-size: 13px; }
+.dest { display: flex; align-items: center; gap: 8px; background: #14120F; border: 1px solid #2E2A23; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 14px; }
 .dest span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button { width: 100%; padding: 10px; border-radius: 6px; background: #1C1917; color: #FAF7F0; border: 1px solid #1C1917; font-weight: 650; font-size: 13.5px; cursor: pointer; font-family: inherit; }
-button:focus-visible { outline: 2px solid #1B5E3B; outline-offset: 2px; }
-small { color: #A8A29E; display: block; margin-top: 10px; font-size: 11.5px; }
+button { width: 100%; padding: 10px; border-radius: 6px; background: #E2A63B; color: #14120F; border: 1px solid #E2A63B; font-weight: 650; font-size: 13.5px; cursor: pointer; font-family: inherit; }
+button:hover { background: #EDB654; }
+button:focus-visible { outline: 2px solid #E2A63B; outline-offset: 2px; }
+small { color: #5A544A; display: block; margin-top: 10px; font-size: 11.5px; }
 </style></head>
 <body>
 <div class="card">
@@ -23,7 +23,7 @@ small { color: #A8A29E; display: block; margin-top: 10px; font-size: 11.5px; }
   <h1>Hold on — back to the lecture?</h1>
   <div id="count" role="timer">3</div>
   <div class="dest">You wandered to <span id="host">…</span></div>
-  <p id="note">Pinned study tabs are always free to switch to. Everything else waits a few seconds, so autopilot switching stops paying off.</p>
+  <p>Pinned study tabs are always free. Everything else waits a few seconds, so autopilot switching stops paying off.</p>
   <button id="back">Back to study</button>
   <small id="total"></small>
 </div>

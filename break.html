@@ -3,19 +3,17 @@
 <head><meta charset="utf-8">
 <link rel="stylesheet" href="fonts/fonts.css"><title>Break — step away</title>
 <style>
-/* Break page: rest is the product. Calm paper, one clear timer, a short
-   checklist, one quiet skip. Same theme as the popup. */
-body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #F5F1E8; color: #1C1917; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
-.card { max-width: 440px; background: #FFFFFF; border: 1px solid #E2D9C3; border-left: 4px solid #1B5E3B; border-radius: 0 8px 8px 0; padding: 28px 30px; }
-.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #1B5E3B; margin: 0 0 6px; }
-h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
-#count { font-size: 52px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; margin: 6px 0 2px; }
-p { color: #57534E; margin: 0 0 12px; font-size: 13.5px; }
-.rules { background: #F5F1E8; border: 1px solid #E2D9C3; border-radius: 6px; padding: 10px 14px; margin: 0 0 12px; font-size: 13px; line-height: 1.9; }
-button { width: 100%; padding: 10px; border-radius: 6px; background: transparent; color: #57534E; border: 1px solid #D6CCB2; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; }
-button:hover { color: #1C1917; border-color: #1C1917; }
-button:focus-visible { outline: 2px solid #1B5E3B; outline-offset: 2px; }
-small { color: #A8A29E; display: block; margin-top: 10px; font-size: 11.5px; }
+:root { color-scheme: dark; }
+body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #14120F; color: #EDE8DE; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
+.card { max-width: 420px; width: 100%; background: #1D1A16; border: 1px solid #2E2A23; border-radius: 8px; padding: 24px; }
+.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #C97B4A; margin: 0 0 6px; }
+h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
+#count { font-size: 48px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+.rules { background: #14120F; border: 1px solid #2E2A23; border-radius: 6px; padding: 10px 14px; margin: 0 0 12px; font-size: 13px; line-height: 1.9; color: #A39E93; }
+button { width: 100%; padding: 10px; border-radius: 6px; background: transparent; color: #A39E93; border: 1px solid #2E2A23; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; }
+button:hover { color: #EDE8DE; border-color: #5A544A; }
+button:focus-visible { outline: 2px solid #E2A63B; outline-offset: 2px; }
+small { color: #5A544A; display: block; margin-top: 10px; font-size: 11.5px; }
 </style></head>
 <body>
 <div class="card">
@@ -26,7 +24,7 @@ small { color: #A8A29E; display: block; margin-top: 10px; font-size: 11.5px; }
     Water · stretch · walk · eyes off the screen<br>
     No new tabs, no Shorts, no “quick check”
   </div>
-  <p>Focus resumes automatically when the timer ends. Study tabs are waiting; switching is free right now and blocks stay on.</p>
+  <p style="color:#A39E93;font-size:13px">Focus resumes automatically when the timer ends.</p>
   <button id="skip">Skip break</button>
   <small>Skipping is allowed and logged in the session summary.</small>
 </div>

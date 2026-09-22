@@ -17,7 +17,7 @@ function ago(ts) {
 function tabIcon(t) {
   if (t.favIcon) return `<img src="${esc(t.favIcon)}" alt="" onerror="this.style.display='none'">`;
   const letter = (t.host || "?").charAt(0).toUpperCase();
-  return `<span aria-hidden="true" style="width:16px;height:16px;border-radius:3px;background:#EDE6D3;color:#6B645A;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">${esc(letter)}</span>`;
+  return `<span aria-hidden="true" style="width:16px;height:16px;border-radius:3px;background:#2E2A23;color:#A39E93;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none">${esc(letter)}</span>`;
 }
 
 function phaseInfo(s) {
@@ -27,6 +27,8 @@ function phaseInfo(s) {
   const focusNo = phases.slice(0, idx + 1).filter((p) => p.type === "focus").length;
   return { phases, idx, cur: phases[idx], focuses, focusNo };
 }
+
+function setVisible(id, show) { $(id).style.display = show ? "" : "none"; }
 
 async function refresh() {
   let st;
@@ -39,8 +41,13 @@ async function refresh() {
   const live = !!session;
   const dot = $("dot");
   dot.className = "dot" + (live ? " live" : "");
-  $("start").style.display = live ? "none" : "";
-  $("stop").style.display = live ? "" : "none";
+
+  // Idle shows only presets + start. Active shows timer, tabs, parking, controls.
+  setVisible("setupSec", !live);
+  setVisible("activeSec", live);
+  setVisible("studySec", live);
+  setVisible("parkSec", live);
+  $("optDetails").open = false;
 
   if (live) {
     const s = session;
@@ -70,7 +77,7 @@ async function refresh() {
     const phaseLeft = fmtClock((s.phaseEndsAt || s.endsAt) - Date.now());
     $("phaseLine").innerHTML = isBreak
       ? `<div class="phase break">${phaseLeft} — step away from the screen.<span class="next">${upcoming ? "Then " + esc(upcoming) : ""} · switching free, blocks stay on</span></div>
-         <div class="row" style="margin-top:6px"><button class="btn" id="skipBreak" style="background:transparent;border-color:#92400E;color:#92400E">Skip break</button></div>`
+         <div class="row"><button class="btn" id="skipBreak" style="background:transparent;border-color:#4A3A1E;color:#E8C48A">Skip break</button></div>`
       : `<div class="phase">${phaseLeft} in this block.<span class="next">${upcoming ? "Then " + esc(upcoming) : "Final stretch — finish strong."}</span></div>`;
     const skipBtn = $("skipBreak");
     if (skipBtn) skipBtn.onclick = async () => {
@@ -96,7 +103,7 @@ async function refresh() {
           ${tabIcon(t)}
           <div class="t">
             <b title="${esc(t.url || "")}">${esc(t.title || t.host || "Untitled tab")}</b>
-            <span class="${t.closed ? "closed" : "ok"}">${t.closed ? "Closed — reopen it, then re-pin" : `${esc(t.host || "pinned")} · switching free`}</span>
+            <span class="${t.closed ? "closed" : ""}">${t.closed ? "Closed — reopen it, then re-pin" : `${esc(t.host || "pinned")} · switching free`}</span>
           </div>
           <button data-unpin="${t.id}" title="Unpin this tab" aria-label="Unpin ${esc(t.title || t.host || "tab")}">×</button>
         </div>`).join("")
@@ -108,7 +115,8 @@ async function refresh() {
           <div class="col"><b>${esc(u.text)}</b>${u.site ? `<div class="site">${esc(u.site)} — unlocks after session</div>` : ""}</div>
           <span class="ago">${ago(u.at)}</span>
         </div>`).join("")
-      : `<div class="empty">Nothing parked. Name the urge instead of opening it.</div>`;
+      : "";
+    if (!(s.urgeLog || []).length) $("urges").innerHTML = `<div class="empty">Nothing parked. Name the urge instead of opening it.</div>`;
   } else {
     dot.classList.remove("rest");
     $("phaseName").textContent = "Ready";
@@ -123,10 +131,7 @@ async function refresh() {
     $("phaseLine").innerHTML = "";
     $("searchNote").style.display = "none";
     $("eta").textContent = "";
-    $("planLine").textContent = "Study guard — watch stays open, Shorts and feed blocked";
-    $("pinCount").textContent = "";
-    $("studyList").innerHTML = `<div class="empty">Pin the tab you're studying in, then start. Switches between pinned tabs are never counted.</div>`;
-    $("urges").innerHTML = `<div class="empty">Parked urges appear here with the site you named.</div>`;
+    $("planLine").textContent = "Lectures open · feeds blocked";
   }
 }
 
@@ -165,11 +170,11 @@ async function startWith(minutes) {
   refresh();
 }
 
-$("start").onclick = async () => {
+$("start").onclick = () => {
   startWith(Math.min(240, Math.max(15, parseInt($("minutes").value) || 25)));
 };
 
-document.querySelectorAll(".sprint").forEach((b) => {
+document.querySelectorAll(".preset").forEach((b) => {
   b.onclick = () => {
     const m = parseInt(b.dataset.min);
     $("minutes").value = m;
@@ -184,7 +189,7 @@ $("pin").onclick = async () => {
   if (!res || !res.ok) {
     // No active session: start one with this tab pinned.
     const whitelist = $("whitelist").value.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
-    await chrome.runtime.sendMessage({ type: "START_SESSION", minutes: parseInt($("minutes").value) || 120, whitelist, studyTabs: [meta] });
+    await chrome.runtime.sendMessage({ type: "START_SESSION", minutes: parseInt($("minutes").value) || 25, whitelist, studyTabs: [meta] });
   }
   refresh();
 };
@@ -195,6 +200,7 @@ $("stop").onclick = async () => {
   if (switches > 0 && !confirm(`End session with ${switches} tab switches? Nothing is saved against you.`)) return;
   await chrome.runtime.sendMessage({ type: "END_SESSION" });
   refresh();
+  renderJournal();
 };
 
 $("park").onclick = async () => {
@@ -236,9 +242,8 @@ const _refresh = refresh;
 refresh = async function () { try { cached = await chrome.runtime.sendMessage({ type: "GET_STATUS" }); } catch { /* keep old cache */ } return _refresh(); };
 
 // ---- spiral journal: streaks, streak discipline, top pulls ----
-// Last 7 days, one row each. Bar = sessions that day (green done, tan quit
-// early). Streak = consecutive days with at least one completed session.
-// The point: your ladder is visible. Three 25s in a row earns the 50.
+// Collapsed under "Your week" + streak badge in header. Streak = consecutive
+// days with at least one completed session.
 async function renderJournal() {
   let history = [];
   try {
@@ -246,8 +251,8 @@ async function renderJournal() {
     history = (res && res.history) || [];
   } catch { return; }
   if (!history.length) return;
-  const wrap = $("journalwrap"), box = $("journal");
-  wrap.style.display = "";
+  const box = $("journal");
+  $("journalDetails").style.display = "";
 
   const dayKey = (ts) => {
     const d = new Date(ts);
@@ -265,19 +270,22 @@ async function renderJournal() {
     const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
     days.push({ d, list: byDay[k] || [] });
   }
-  // Streak over trailing days: today may still be in progress, so start from
-  // yesterday if today has no completed session yet.
   let streak = 0;
   const seq = days.map((x) => x.list.some((h) => h.completed));
   let idx = seq.length - 1;
   if (!seq[idx]) idx -= 1;
   for (; idx >= 0 && seq[idx]; idx--) streak++;
 
+  if (streak >= 2) {
+    const badge = $("streak");
+    badge.style.display = "";
+    badge.textContent = `${streak}-day streak`;
+  }
+
   const label = (d, i) => i === 6 ? "Today" : i === 5 ? "Yesterday"
     : d.toLocaleDateString(undefined, { weekday: "short" });
   box.innerHTML = days.map(({ d, list }, i) => {
     const done = list.filter((h) => h.completed).length;
-    const quit = list.length - done;
     const n = list.length
       ? `${list.length} session${list.length > 1 ? "s" : ""} · ${done} done`
       : `rest`;
@@ -286,8 +294,11 @@ async function renderJournal() {
           `<i class="${h.completed ? "done" : "quit"}" title="${h.planned} min, ${h.switches} switches"></i>`).join("")}</div>`
       : "";
     return `<div class="jday"><div class="top"><b>${label(d, i)}</b><span class="n">${n}</span></div>${bars}<div class="topsites"></div></div>`;
-  }).join("") + (streak >= 2 ? `<div class="hint">Streak: ${streak} days with a finished session. Keep the ladder — don't jump lengths.</div>` : "");
-  // Top pulls across the week, shown on today's row only.
+  }).join("");
+  $("journalHint").style.display = "";
+  $("journalHint").textContent = streak >= 2
+    ? `Streak: ${streak} days with a finished session. Keep the ladder — don't jump lengths.`
+    : "Finish a session to start a streak.";
   const counts = {};
   for (const h of history) for (const t of h.top || []) counts[t.site] = (counts[t.site] || 0) + t.count;
   const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
