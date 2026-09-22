@@ -1,13 +1,19 @@
-// Injected early on every page: instantly bounce blocked pages + YT distractions during a session.
+// In-page bounce mirror of the background guard. Runs at document_start,
+// before the page paints. Uses the same matcher table as background.js —
+// keep the two files in sync when adding hosts.
 (async () => {
   try {
-    const st = await chrome.storage.local.get(["session", "blocklist"]);
+    const st = await chrome.storage.local.get(["session", "blocklist", "blocklistVersion"]);
     if (!st.session) return;
+    const BLOCKLIST = st.blocklist && st.blocklist.length ? st.blocklist : [
+      "instagram.com", "x.com", "twitter.com", "threads.net", "reddit.com",
+      "facebook.com", "netflix.com", "hotstar.com", "chess.com", "lichess.org",
+      "cricbuzz.com", "amazon.in", "flipkart.com", "zomato.com", "swiggy.com",
+    ];
     const host = location.hostname.toLowerCase().replace(/^www\.|^m\./, "");
     const wl = st.session.whitelist || [];
     if (wl.some((w) => host === w || host.endsWith("." + w))) return;
-    const bl = st.blocklist || [];
-    if (bl.some((b) => host === b || host.endsWith("." + b))) {
+    if (BLOCKLIST.some((b) => host === b || host.endsWith("." + b))) {
       location.replace(chrome.runtime.getURL("blocked.html") + "?from=" + encodeURIComponent(location.href));
       return;
     }

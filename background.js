@@ -1,16 +1,32 @@
 // FocusLock background service worker — sessions with enforced breaks,
 // tab-switch jail, blocklist + YouTube study guard, search-spiral tripwire.
 
+const BLOCKLIST_VERSION = 2;
+const DEFAULT_BLOCKLIST = [
+  // Social / doomscroll
+  "instagram.com", "x.com", "twitter.com", "threads.net",
+  "reddit.com", "facebook.com", "snapchat.com", "pinterest.com",
+  "pinterest.in", "quora.com", "medium.com", "tumblr.com",
+  "9gag.com", "imgur.com", "discord.com", "linkedin.com",
+  // Video / OTT (YouTube handled by the study guard, not the list)
+  "netflix.com", "hotstar.com", "jiohotstar.com", "primevideo.com",
+  "sonyliv.com", "zee5.com", "mxplayer.in", "dailymotion.com",
+  "hulu.com", "twitch.tv",
+  // Chess, cricket, shopping, food — the "5-minute check" traps
+  "chess.com", "lichess.org",
+  "cricbuzz.com", "espncricinfo.com", "cricinfo.com",
+  "amazon.com", "amazon.in", "flipkart.com", "myntra.com",
+  "meesho.com", "ajio.com", "snapdeal.com", "olx.in",
+  "zomato.com", "swiggy.com", "dream11.com",
+];
+
 const DEFAULT_STATE = {
   session: null, // { startedAt, endsAt, plannedMinutes, whitelist, studyTabs, urgeLog,
                  //   searchLog: [{at, query}], phases: [{type, minutes}], phaseIndex,
                  //   phaseEndsAt, lastSearchNudgeAt, breakTabId }
   switches: 0,   // switches TO pinned study tabs are free, never counted; no jail during breaks
-  blocklist: [
-    "instagram.com", "x.com", "twitter.com",
-    "reddit.com", "facebook.com", "netflix.com", "discord.com",
-    "twitch.tv", "linkedin.com"
-  ],
+  blocklist: [...DEFAULT_BLOCKLIST],
+  blocklistVersion: 0,
 };
 
 // Hosts that are study sources: never fully blocked, only their
@@ -60,7 +76,16 @@ function siteOf(text) {
 
 async function getState() {
   const stored = await chrome.storage.local.get(Object.keys(DEFAULT_STATE));
-  return { ...DEFAULT_STATE, ...stored };
+  const st = { ...DEFAULT_STATE, ...stored };
+  // Auto-grow the blocklist for users who stored the old short list:
+  // merge in any new defaults while keeping their custom entries.
+  if ((stored.blocklistVersion || 0) < BLOCKLIST_VERSION) {
+    const merged = new Set([...(stored.blocklist || []), ...DEFAULT_BLOCKLIST]);
+    st.blocklist = [...merged];
+    st.blocklistVersion = BLOCKLIST_VERSION;
+    try { await chrome.storage.local.set({ blocklist: st.blocklist, blocklistVersion: BLOCKLIST_VERSION }); } catch { /* ignore */ }
+  }
+  return st;
 }
 
 // Migrate legacy sessions that stored bare tab-id arrays.
@@ -313,11 +338,28 @@ function hostOf(url) {
   try { return new URL(url).hostname.toLowerCase().replace(/^www\./, ""); } catch { return ""; }
 }
 
+// Match a host against the blocklist. Suffix match covers subdomains
+// (m., new., old., pro.), but bare "facebook" in a hostname only counts
+// when it is the registrable domain — mobile.facebook.com yes,
+// notfacebook.com and myfacebookclone.com no.
+function hostBlocked(host, st) {
+  for (const b of st.blocklist) {
+    if (host === b || host.endsWith("." + b)) return b;
+    const base = b.split(".")[0];
+    if (base.length >= 4 && host.includes(base)) {
+      // Suspicious lookalikes (m.facebook.com.attacker.com): still check the
+      // registrable tail — block only when the tail itself is the entry.
+      const tail = host.split(".").slice(-b.split(".").length).join(".");
+      if (tail === b) return b;
+    }
+  }
+  return null;
+}
+
 function isAllowed(url, st) {
   const host = hostOf(url);
   if (!host) return true;
-  const inBlock = st.blocklist.some((b) => host === b || host.endsWith("." + b));
-  if (!inBlock) return true;
+  if (!hostBlocked(host, st)) return true;
   if (st.session && st.session.whitelist.some((w) => host === w || host.endsWith("." + w))) return true;
   return false;
 }
