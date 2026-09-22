@@ -28,7 +28,20 @@ function ytDistraction(url) {
   return YT_DISTRACTION_PATHS.some((re) => re.test(u.pathname));
 }
 
-// Pull a domain-looking token out of free text ("check instagram", "youtube.com shorts").
+function fmtLeft(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}` : `${m}m`;
+}
+
+async function updateBadge() {
+  try {
+    const st = await getState();
+    if (!st.session) { await chrome.action.setBadgeText({ text: "" }); return; }
+    await chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
+    await chrome.action.setBadgeText({ text: fmtLeft(st.session.endsAt - Date.now()) });
+  } catch { /* ignore */ }
+}
 function siteOf(text) {
   const m = String(text || "").toLowerCase().match(/([a-z0-9][a-z0-9-]*\.)+[a-z]{2,}/);
   return m ? m[0].replace(/^www\./, "") : "";
@@ -79,6 +92,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       });
       chrome.alarms.create("focusEnd", { when: now + minutes * 60 * 1000 });
       chrome.alarms.create("focusHalf", { when: now + (minutes * 60 * 1000) / 2 });
+      chrome.alarms.create("tick", { periodInMinutes: 1 });
+      updateBadge();
       sendResponse({ ok: true });
     } else if (msg.type === "PIN_STUDY_TAB") {
       const st = await getState();
@@ -107,6 +122,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     } else if (msg.type === "END_SESSION") {
       await chrome.storage.local.set({ session: null });
       await chrome.alarms.clearAll();
+      await chrome.action.setBadgeText({ text: "" }).catch(() => {});
       sendResponse({ ok: true });
     } else if (msg.type === "PARK_URGE") {
       const st = await getState();
@@ -147,9 +163,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === "tick") { updateBadge(); return; }
   if (alarm.name === "focusEnd") {
     await chrome.storage.local.set({ session: null });
     await chrome.alarms.clearAll();
+    await chrome.action.setBadgeText({ text: "" }).catch(() => { });
     chrome.notifications.create({
       type: "basic", iconUrl: "icon128.png",
       title: "FocusLock — session complete",

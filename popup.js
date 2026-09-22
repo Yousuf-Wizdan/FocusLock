@@ -1,6 +1,14 @@
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+function fmtClock(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`
+    : `${m}:${String(r).padStart(2, "0")}`;
+}
+
 function ago(ts) {
   const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
   return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ${m % 60}m ago`;
@@ -27,12 +35,14 @@ async function refresh() {
   $("pin").disabled = false;
 
   if (live) {
-    const total = Math.max(1, Math.round((session.endsAt - session.startedAt) / 60000));
-    const left = Math.max(0, Math.round((session.endsAt - Date.now()) / 60000));
-    $("sTime").textContent = left;
+    const total = session.endsAt - session.startedAt;
+    const leftMs = session.endsAt - Date.now();
+    $("sTime").textContent = fmtClock(leftMs);
     $("sSwitch").textContent = switches;
     $("sUrge").textContent = (session.urgeLog || []).length;
-    $("bar").style.width = Math.min(100, Math.max(0, ((total - left) / total) * 100)) + "%";
+    $("bar").style.width = Math.min(100, Math.max(0, ((total - leftMs) / total) * 100)) + "%";
+    const endAt = new Date(session.endsAt);
+    $("eta").textContent = `ends ${endAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} · live countdown while open`;
 
     const tabs = session.studyTabs || [];
     $("pinCount").textContent = tabs.length ? `(${tabs.length})` : "";
@@ -61,6 +71,7 @@ async function refresh() {
     $("sSwitch").textContent = "0";
     $("sUrge").textContent = "0";
     $("bar").style.width = "0%";
+    $("eta").textContent = "";
     $("pinCount").textContent = "";
     $("studyList").innerHTML = `<div class="empty">Start a session first — the tab you're on gets pinned automatically. Pin more tabs any time with <b>📌 Pin this tab</b>.</div>`;
     $("urges").innerHTML = `<div class="empty">Parked urges appear here with the site you named.</div>`;
@@ -125,4 +136,20 @@ $("park").onclick = async () => {
 $("urge").addEventListener("keydown", (e) => { if (e.key === "Enter") $("park").click(); });
 
 refresh();
+setInterval(tick, 1000);
 setInterval(refresh, 15000);
+
+// Lightweight 1s tick: countdown + progress bar only, no re-render (no flicker).
+let cached = null;
+async function tick() {
+  try {
+    if (!cached || !cached.session) return;
+    const leftMs = cached.session.endsAt - Date.now();
+    if (leftMs <= 0) { refresh(); cached = null; return; }
+    $("sTime").textContent = fmtClock(leftMs);
+    const total = cached.session.endsAt - cached.session.startedAt;
+    $("bar").style.width = Math.min(100, Math.max(0, ((total - leftMs) / total) * 100)) + "%";
+  } catch { /* ignore */ }
+}
+const _refresh = refresh;
+refresh = async function () { try { cached = await chrome.runtime.sendMessage({ type: "GET_STATUS" }); } catch { /* keep old cache */ } return _refresh(); };
