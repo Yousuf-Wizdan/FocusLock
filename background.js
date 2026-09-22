@@ -27,6 +27,7 @@ const DEFAULT_STATE = {
   switches: 0,   // switches TO pinned study tabs are free, never counted; no jail during breaks
   blocklist: [...DEFAULT_BLOCKLIST],
   blocklistVersion: 0,
+  pendingPins: [], // tabs pinned while idle — merged into the session on Start, then cleared
   history: [],   // [{endedAt, planned, switches, urges, searches, completed, top:[{site,count}]}] — last 30
 };
 
@@ -254,6 +255,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         } catch { /* tab gone */ }
         studyTabs.push({ id, title: meta.title, url: meta.url, host: hostOf(meta.url || ""), favIcon: meta.favIcon, closed: false });
       }
+      // Merge tabs pinned while idle, then clear the tray.
+      const stored = await chrome.storage.local.get(["pendingPins"]);
+      for (const p of Array.isArray(stored.pendingPins) ? stored.pendingPins : []) {
+        if (p && Number.isInteger(p.id) && !studyTabs.some((t) => t.id === p.id)) studyTabs.push(p);
+      }
       const phases = buildPhases(minutes);
       const session = {
         startedAt: now, endsAt: now + minutes * 60 * 1000, plannedMinutes: minutes,
@@ -262,7 +268,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         phaseStartedAt: now,
         lastSearchNudgeAt: 0, breakTabId: null,
       };
-      await chrome.storage.local.set({ session, switches: 0 });
+      await chrome.storage.local.set({ session, switches: 0, pendingPins: [] });
       await chrome.alarms.clearAll();
       chrome.alarms.create("phase", { when: session.phaseEndsAt });
       chrome.alarms.create("focusEnd", { when: session.endsAt });
@@ -272,26 +278,54 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true, plan });
     } else if (msg.type === "PIN_STUDY_TAB") {
       const st = await getState();
-      if (!st.session) { sendResponse({ ok: false, reason: "no-session" }); return; }
-      const tabs = studyList(st.session);
-      if (Number.isInteger(msg.tabId) && !tabs.some((t) => t.id === msg.tabId)) {
-        let meta = { title: msg.title || "", url: msg.url || "", favIcon: msg.favIcon || "" };
-        if ((!meta.url || !meta.title) && Number.isInteger(msg.tabId)) {
-          try {
-            const t = await chrome.tabs.get(msg.tabId);
-            meta = { title: t.title || meta.title, url: t.url || meta.url, favIcon: t.favIconUrl || meta.favIcon };
-          } catch { /* ignore */ }
-        }
-        tabs.push({ id: msg.tabId, title: meta.title, url: meta.url, host: msg.host || hostOf(meta.url || ""), favIcon: meta.favIcon, closed: false });
-        st.session.studyTabs = tabs;
-        await chrome.storage.local.set({ session: st.session });
+      const entry = {
+        id: msg.tabId,
+        title: msg.title || "",
+        url: msg.url || "",
+        host: msg.host || hostOf(msg.url || ""),
+        favIcon: msg.favIcon || "",
+        closed: false,
+      };
+      if (!Number.isInteger(entry.id)) { sendResponse({ ok: false, reason: "bad-tab" }); return; }
+      // Fill in missing identity from the live tab — pinning must name the
+      // tab even if the caller only passed an id.
+      if (!entry.url || !entry.title) {
+        try {
+          const t = await chrome.tabs.get(entry.id);
+          entry.title = entry.title || t.title || "";
+          entry.url = entry.url || t.url || "";
+          entry.host = entry.host || hostOf(entry.url);
+          entry.favIcon = entry.favIcon || t.favIconUrl || "";
+        } catch { /* tab gone */ }
       }
-      sendResponse({ ok: true, studyTabs: studyList(st.session) });
+      if (st.session) {
+        // Live session: pin straight into it.
+        const tabs = studyList(st.session);
+        if (!tabs.some((t) => t.id === entry.id)) {
+          tabs.push(entry);
+          st.session.studyTabs = tabs;
+          await chrome.storage.local.set({ session: st.session });
+        }
+        sendResponse({ ok: true, studyTabs: studyList(st.session), pending: false });
+      } else {
+        // Idle: hold it in the tray until Start merges it in.
+        const stored = await chrome.storage.local.get(["pendingPins"]);
+        const tray = Array.isArray(stored.pendingPins) ? stored.pendingPins : [];
+        if (!tray.some((t) => t.id === entry.id)) {
+          tray.push(entry);
+          await chrome.storage.local.set({ pendingPins: tray });
+        }
+        sendResponse({ ok: true, studyTabs: tray, pending: true });
+      }
     } else if (msg.type === "UNPIN_STUDY_TAB") {
       const st = await getState();
       if (st.session) {
         st.session.studyTabs = studyList(st.session).filter((t) => t.id !== msg.tabId);
         await chrome.storage.local.set({ session: st.session });
+      } else {
+        const stored = await chrome.storage.local.get(["pendingPins"]);
+        const tray = Array.isArray(stored.pendingPins) ? stored.pendingPins : [];
+        await chrome.storage.local.set({ pendingPins: tray.filter((t) => t && t.id !== msg.tabId) });
       }
       sendResponse({ ok: true });
     } else if (msg.type === "END_SESSION") {
@@ -349,7 +383,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await chrome.storage.local.set({ session: st.session });
       }
       const cur = await getState();
-      sendResponse({ session: cur.session, switches: cur.switches, blocklist: cur.blocklist });
+      sendResponse({ session: cur.session, switches: cur.switches, blocklist: cur.blocklist, pendingPins: cur.pendingPins || [] });
     }
   })();
   return true;

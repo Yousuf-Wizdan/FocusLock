@@ -42,8 +42,9 @@ async function refresh() {
   const dot = $("dot");
   dot.className = "dot" + (live ? " live" : "");
 
-  // Idle shows only presets + start. Active shows timer, tabs, parking, controls.
+  // Idle shows presets, pin, start + the pinned tray. Active shows timer, tabs, parking, controls.
   setVisible("setupSec", !live);
+  setVisible("traySec", !live);
   setVisible("activeSec", live);
   setVisible("studySec", live);
   setVisible("parkSec", live);
@@ -132,8 +133,31 @@ async function refresh() {
     $("searchNote").style.display = "none";
     $("eta").textContent = "";
     $("planLine").textContent = "Lectures open · feeds blocked";
+    renderTray(st.pendingPins || []);
   }
 }
+
+function renderTray(tray) {
+  $("trayCount").textContent = tray.length ? `(${tray.length})` : '';
+  $("trayList").innerHTML = tray.length
+    ? tray.map((t) => `
+      <div class="studytab">
+        ${tabIcon(t)}
+        <div class="t">
+          <b title="${esc(t.url || '')}">${esc(t.title || t.host || 'Untitled tab')}</b>
+          <span>${esc(t.host || 'pinned')} · joins on start</span>
+        </div>
+        <button data-untray="${t.id}" title="Unpin this tab" aria-label="Unpin ${esc(t.title || t.host || 'tab')}">×</button>
+      </div>`).join('')
+    : `<div class="empty">Nothing pinned yet. Pin your lecture tabs now — Start pulls them in.</div>`;
+}
+
+document.querySelector("#trayList").addEventListener("click", async (e) => {
+  const id = e.target?.dataset?.untray;
+  if (!id) return;
+  await chrome.runtime.sendMessage({ type: "UNPIN_STUDY_TAB", tabId: parseInt(id) });
+  refresh();
+});
 
 document.querySelector("#studyList").addEventListener("click", async (e) => {
   const id = e.target?.dataset?.unpin;
@@ -182,17 +206,15 @@ document.querySelectorAll(".preset").forEach((b) => {
   };
 });
 
-$("pin").onclick = async () => {
+async function pinCurrentTab() {
   const meta = await curTabMeta();
   if (!meta) return;
-  const res = await chrome.runtime.sendMessage({ type: "PIN_STUDY_TAB", ...meta }).catch(() => null);
-  if (!res || !res.ok) {
-    // No active session: start one with this tab pinned.
-    const whitelist = $("whitelist").value.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
-    await chrome.runtime.sendMessage({ type: "START_SESSION", minutes: parseInt($("minutes").value) || 25, whitelist, studyTabs: [meta] });
-  }
+  await chrome.runtime.sendMessage({ type: "PIN_STUDY_TAB", ...meta }).catch(() => null);
   refresh();
-};
+}
+
+$("pin").onclick = pinCurrentTab;
+$("pinIdle").onclick = pinCurrentTab;
 
 $("stop").onclick = async () => {
   let switches = 0;

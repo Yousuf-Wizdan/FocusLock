@@ -48,8 +48,8 @@ main { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px
 .btn:focus-visible { outline: 2px solid #E2A63B; outline-offset: 2px; }
 #start { background: #E2A63B; color: #14120F; }
 #start:hover { background: #EDB654; }
-#pin { background: transparent; color: #EDE8DE; border-color: #2E2A23; }
-#pin:hover { border-color: #E2A63B; }
+#pin, #pinIdle { background: transparent; color: #EDE8DE; border-color: #2E2A23; }
+#pin:hover, #pinIdle:hover { border-color: #E2A63B; }
 #stop { background: transparent; color: #A39E93; border-color: #2E2A23; flex: 0 0 76px; }
 #stop:hover { color: #EDE8DE; border-color: #5A544A; }
 #park { background: #E2A63B; color: #14120F; flex: 0 0 76px; }
@@ -116,6 +116,7 @@ details .body { padding: 0 10px 10px; }
       <button class="preset" data-min="120">120<small>marathon</small></button>
     </div>
     <div class="row">
+      <button class="btn" id="pinIdle" title="Pin the tab you are on as a study tab">Pin this tab</button>
       <button class="btn" id="start">Start session</button>
     </div>
   </section>
@@ -130,6 +131,11 @@ details .body { padding: 0 10px 10px; }
   <section id="studySec" aria-label="Study tabs" style="display:none">
     <p class="sec-label">Study tabs <span id="pinCount"></span></p>
     <div id="studyList"></div>
+  </section>
+
+  <section id="traySec" aria-label="Pinned tabs" style="display:none">
+    <p class="sec-label">Pinned for next session <span id="trayCount"></span></p>
+    <div id="trayList"></div>
   </section>
 
   <section id="parkSec" aria-label="Park an urge" style="display:none">
