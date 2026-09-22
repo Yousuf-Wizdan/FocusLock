@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><style>
+body { font-family: system-ui, sans-serif; width: 300px; padding: 16px; margin: 0; background: #0f172a; color: #e2e8f0; }
+h2 { margin: 0 0 4px; font-size: 17px; }
+.sub { color: #94a3b8; font-size: 12px; margin-bottom: 12px; }
+#status { background: #1e293b; border-radius: 8px; padding: 10px; font-size: 13px; margin-bottom: 12px; }
+#status b { color: #fbbf24; font-size: 18px; }
+label { font-size: 12px; color: #94a3b8; display:block; margin: 8px 0 4px; }
+input, textarea { width: 100%; box-sizing: border-box; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; padding: 7px; font-size: 13px; }
+.row { display: flex; gap: 8px; margin-top: 10px; }
+button { flex: 1; padding: 9px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; }
+#start { background: #22c55e; color: #052e16; }
+#stop { background: #334155; color: #e2e8f0; }
+#park { background: #0ea5e9; color: #041c2c; margin-top: 8px; width: 100%; }
+#urges { font-size: 12px; color: #94a3b8; margin-top: 8px; max-height: 90px; overflow: auto; }
+#urges div { padding: 3px 0; border-bottom: 1px solid #1e293b; }
+.hint { font-size: 11px; color: #64748b; margin-top: 10px; }
+</style></head>
+<body>
+<h2>🔒 FocusLock</h2>
+<div class="sub">2-hour study guard — YouTube watch stays open, Shorts/feed blocked</div>
+<div id="status">Loading…</div>
+<label>Session length (minutes)</label>
+<input id="minutes" type="number" value="120" min="25" max="240">
+<label>Allow during session (one domain per line) — e.g. your study site</label>
+<textarea id="whitelist" rows="3" placeholder="docs.google.com&#10;coursera.org"></textarea>
+<div class="row">
+  <button id="pin">📌 This tab is study</button>
+</div>
+<div id="studyTabs" style="font-size:12px;color:#94a3b8;margin-top:6px"></div>
+<div class="row">
+  <button id="start">Start session</button>
+  <button id="stop">End</button>
+</div>
+<label>Urge hitting? Park it, don't open it 👇</label>
+<div class="row" style="margin-top:0">
+  <input id="urge" placeholder="e.g. check instagram">
+  <button id="park" style="flex:0 0 70px">Park</button>
+</div>
+<div id="urges"></div>
+<div class="hint">Switches to pinned study tabs are free. Everything else bounces to a wait screen and gets counted. YouTube watch/search/playlist stay open; Shorts, home, trending, explore get blocked.</div>
+<script src="popup.js"></script>
+</body>
+</html>

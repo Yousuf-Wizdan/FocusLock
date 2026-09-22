@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Blocked — study first</title>
+<style>
+body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+.card { text-align: center; max-width: 420px; padding: 40px; }
+.big { font-size: 90px; }
+h1 { font-size: 26px; }
+p { color: #94a3b8; }
+button { margin-top: 16px; padding: 10px 22px; border: none; border-radius: 8px; background: #0ea5e9; color: #041c2c; font-weight: 700; cursor: pointer; }
+small { color: #64748b; display: block; margin-top: 12px; word-break: break-all; }
+</style></head>
+<body>
+<div class="card">
+  <div class="big">📵</div>
+  <h1 id="title">Blocked until session ends</h1>
+  <p id="desc">This site is on your blocklist. It'll open automatically after your session. Park the urge instead.</p>
+  <button onclick="history.back()">Back to study</button>
+  <small id="from"></small>
+</div>
+<script>
+const q = new URLSearchParams(location.search);
+document.getElementById("from").textContent = q.get("from") || "";
+if (q.get("why") === "yt") {
+  document.getElementById("title").textContent = "Not study — blocked";
+  document.getElementById("desc").textContent = "Shorts, home feed, trending and explore stay blocked during sessions. Your lecture/watch, search, playlist and channel pages always stay open. Go back to the video.";
+}
+</script>
+</body>
+</html>
