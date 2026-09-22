@@ -27,6 +27,7 @@ const DEFAULT_STATE = {
   switches: 0,   // switches TO pinned study tabs are free, never counted; no jail during breaks
   blocklist: [...DEFAULT_BLOCKLIST],
   blocklistVersion: 0,
+  history: [],   // [{endedAt, planned, switches, urges, searches, completed, top:[{site,count}]}] — last 30
 };
 
 // Hosts that are study sources: never fully blocked, only their
@@ -74,6 +75,29 @@ function siteOf(text) {
   return m ? m[0].replace(/^www\./, "") : "";
 }
 
+// Write-once summary when a session ends (complete OR quit early).
+// Kept to the last 30 so storage stays tiny forever.
+async function recordHistory(session, switches, completed) {
+  try {
+    const urges = (session.urgeLog || []).length;
+    const searches = (session.searchLog || []).length;
+    const counts = {};
+    for (const u of session.urgeLog || []) {
+      const key = u.site || (u.text || "").slice(0, 40) || "unnamed";
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([site, count]) => ({ site, count }));
+    const stored = await chrome.storage.local.get(["history"]);
+    const history = Array.isArray(stored.history) ? stored.history : [];
+    history.push({
+      endedAt: Date.now(), planned: session.plannedMinutes || 0,
+      switches: switches || 0, urges, searches, completed: !!completed, top,
+    });
+    await chrome.storage.local.set({ history: history.slice(-30) });
+  } catch { /* history is best-effort */ }
+}
+
 async function getState() {
   const stored = await chrome.storage.local.get(Object.keys(DEFAULT_STATE));
   const st = { ...DEFAULT_STATE, ...stored };
@@ -101,16 +125,22 @@ function studyList(session) {
   return [];
 }
 
-// ---- phases (break enforcement) ----
-// 120-min default -> 50 focus, 10 break, 60 focus. Shorter sessions scale down;
-// under 60 min is a single focus block with no break.
+// ---- phases: micro-sprints for low attention spans ----
+// 15 min -> single 15 block, no break. 25 -> single 25, no break.
+// 35–69 -> 25 focus + 5 break + rest focus (gentle on-ramp).
+// 70+ -> classic 50 focus + 10 break + rest focus.
 function buildPhases(minutes) {
-  if (minutes >= 70) return [
+  if (minutes <= 25) return [{ type: "focus", minutes }];
+  if (minutes < 70) return [
+    { type: "focus", minutes: 25 },
+    { type: "break", minutes: 5 },
+    { type: "focus", minutes: minutes - 30 },
+  ];
+  return [
     { type: "focus", minutes: 50 },
     { type: "break", minutes: 10 },
     { type: "focus", minutes: minutes - 60 },
   ];
-  return [{ type: "focus", minutes }];
 }
 
 // Normalize legacy / partial sessions so every reader can assume phases exist.
@@ -164,6 +194,7 @@ async function advancePhase(reason) {
   s.phaseIndex += 1;
   if (s.phaseIndex >= s.phases.length) {
     // Session complete.
+    await recordHistory(s, st.switches, true);
     await chrome.storage.local.set({ session: null });
     await chrome.alarms.clearAll();
     await chrome.action.setBadgeText({ text: "" }).catch(() => {});
@@ -181,10 +212,12 @@ async function advancePhase(reason) {
   chrome.alarms.create("phase", { when: s.phaseEndsAt });
   updateBadge();
   if (phase.type === "break") {
+    const focusDone = s.phases.slice(0, s.phaseIndex).filter((p) => p.type === "focus")
+      .reduce((a, p) => a + p.minutes, 0);
     chrome.notifications.create({
       type: "basic", iconUrl: "icon128.png",
       title: "FocusLock — break time",
-      message: `50 minutes done. Step away for 10 — no tabs, no phone. Switching is free during break; blocks stay on.`,
+      message: `${focusDone} minutes done. Step away for ${phase.minutes} — no tabs, no phone. Switching is free during break; blocks stay on.`,
     });
     try {
       const t = await chrome.tabs.create({ url: chrome.runtime.getURL("break.html") + "?wait=" + phase.minutes, active: true });
@@ -263,11 +296,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sendResponse({ ok: true });
     } else if (msg.type === "END_SESSION") {
       const st = await getState();
-      if (st.session) await closeBreakTab(st.session);
+      if (st.session) {
+        await recordHistory(st.session, st.switches, false);
+        await closeBreakTab(st.session);
+      }
       await chrome.storage.local.set({ session: null });
       await chrome.alarms.clearAll();
       await chrome.action.setBadgeText({ text: "" }).catch(() => {});
       sendResponse({ ok: true });
+    } else if (msg.type === "GET_HISTORY") {
+      const stored = await chrome.storage.local.get(["history"]);
+      sendResponse({ history: Array.isArray(stored.history) ? stored.history : [] });
     } else if (msg.type === "SKIP_BREAK") {
       const st = await getState();
       if (!st.session) { sendResponse({ ok: false }); return; }
@@ -321,7 +360,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "phase") { advancePhase("timer"); return; }
   if (alarm.name === "focusEnd") {
     const st = await getState();
-    if (st.session) await closeBreakTab(st.session);
+    if (st.session) {
+      await recordHistory(st.session, st.switches, true);
+      await closeBreakTab(st.session);
+    }
     await chrome.storage.local.set({ session: null });
     await chrome.alarms.clearAll();
     await chrome.action.setBadgeText({ text: "" }).catch(() => { });

@@ -146,10 +146,14 @@ function curTabMeta() {
   });
 }
 
-$("start").onclick = async () => {
-  const minutes = parseInt($("minutes").value) || 120;
-  const plan = minutes >= 70 ? `${minutes} min: 50 focus, 10 break, ${minutes - 60} focus. Start?` : `${minutes} min single block, no break. Start?`;
-  if (!confirm(plan)) return;
+function planText(minutes) {
+  if (minutes <= 25) return `${minutes} min single block, no break. Start?`;
+  if (minutes < 70) return `${minutes} min: 25 focus, 5 break, ${minutes - 30} focus. Start?`;
+  return `${minutes} min: 50 focus, 10 break, ${minutes - 60} focus. Start?`;
+}
+
+async function startWith(minutes) {
+  if (!confirm(planText(minutes))) return;
   const whitelist = $("whitelist").value.split(/[,\n]/).map((s) => s.trim()).filter(Boolean);
   const meta = await curTabMeta();
   await chrome.runtime.sendMessage({
@@ -159,7 +163,19 @@ $("start").onclick = async () => {
     studyTabs: meta ? [meta] : [],
   });
   refresh();
+}
+
+$("start").onclick = async () => {
+  startWith(Math.min(240, Math.max(15, parseInt($("minutes").value) || 25)));
 };
+
+document.querySelectorAll(".sprint").forEach((b) => {
+  b.onclick = () => {
+    const m = parseInt(b.dataset.min);
+    $("minutes").value = m;
+    startWith(m);
+  };
+});
 
 $("pin").onclick = async () => {
   const meta = await curTabMeta();
@@ -193,6 +209,7 @@ $("urge").addEventListener("keydown", (e) => { if (e.key === "Enter") $("park").
 refresh();
 setInterval(tick, 1000);
 setInterval(refresh, 15000);
+renderJournal();
 
 // Lightweight 1s tick: countdown + progress bar only, no re-render (no flicker).
 // During breaks the anchor is the break end; otherwise the session end.
@@ -217,3 +234,65 @@ async function tick() {
 }
 const _refresh = refresh;
 refresh = async function () { try { cached = await chrome.runtime.sendMessage({ type: "GET_STATUS" }); } catch { /* keep old cache */ } return _refresh(); };
+
+// ---- spiral journal: streaks, streak discipline, top pulls ----
+// Last 7 days, one row each. Bar = sessions that day (green done, tan quit
+// early). Streak = consecutive days with at least one completed session.
+// The point: your ladder is visible. Three 25s in a row earns the 50.
+async function renderJournal() {
+  let history = [];
+  try {
+    const res = await chrome.runtime.sendMessage({ type: "GET_HISTORY" });
+    history = (res && res.history) || [];
+  } catch { return; }
+  if (!history.length) return;
+  const wrap = $("journalwrap"), box = $("journal");
+  wrap.style.display = "";
+
+  const dayKey = (ts) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+  const byDay = {};
+  for (const h of history) {
+    const k = dayKey(h.endedAt);
+    (byDay[k] = byDay[k] || []).push(h);
+  }
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today - i * 86400000);
+    const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    days.push({ d, list: byDay[k] || [] });
+  }
+  // Streak over trailing days: today may still be in progress, so start from
+  // yesterday if today has no completed session yet.
+  let streak = 0;
+  const seq = days.map((x) => x.list.some((h) => h.completed));
+  let idx = seq.length - 1;
+  if (!seq[idx]) idx -= 1;
+  for (; idx >= 0 && seq[idx]; idx--) streak++;
+
+  const label = (d, i) => i === 6 ? "Today" : i === 5 ? "Yesterday"
+    : d.toLocaleDateString(undefined, { weekday: "short" });
+  box.innerHTML = days.map(({ d, list }, i) => {
+    const done = list.filter((h) => h.completed).length;
+    const quit = list.length - done;
+    const n = list.length
+      ? `${list.length} session${list.length > 1 ? "s" : ""} · ${done} done`
+      : `rest`;
+    const bars = list.length
+      ? `<div class="bars" aria-hidden="true">${list.map((h) =>
+          `<i class="${h.completed ? "done" : "quit"}" title="${h.planned} min, ${h.switches} switches"></i>`).join("")}</div>`
+      : "";
+    return `<div class="jday"><div class="top"><b>${label(d, i)}</b><span class="n">${n}</span></div>${bars}<div class="topsites"></div></div>`;
+  }).join("") + (streak >= 2 ? `<div class="hint">Streak: ${streak} days with a finished session. Keep the ladder — don't jump lengths.</div>` : "");
+  // Top pulls across the week, shown on today's row only.
+  const counts = {};
+  for (const h of history) for (const t of h.top || []) counts[t.site] = (counts[t.site] || 0) + t.count;
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const rows = box.querySelectorAll(".jday .topsites");
+  if (top.length && rows.length) {
+    rows[rows.length - 1].innerHTML = `Pulls hardest: ${top.map(([s, c]) => `<b>${esc(s)}</b> ×${c}`).join(" · ")}`;
+  }
+}

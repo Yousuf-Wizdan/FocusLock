@@ -50,6 +50,22 @@ h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: 
 .studytab button:focus-visible { outline: 2px solid #1C1917; outline-offset: 1px; }
 .empty { font-size: 12px; color: #6B645A; background: transparent; border: 1px dashed #C9BFA6; border-radius: 6px; padding: 9px 10px; }
 .controls { display: flex; flex-direction: column; gap: 8px; }
+.sprints { display: flex; gap: 6px; }
+.sprint { flex: 1; padding: 8px 4px; border-radius: 6px; border: 1px solid #D6CCB2; background: transparent; color: #1C1917; font-weight: 650; font-size: 12px; cursor: pointer; font-family: inherit; }
+.sprint:hover { border-color: #1C1917; }
+.sprint:focus-visible { outline: 2px solid #1B5E3B; outline-offset: 2px; }
+.sprint small { display: block; font-weight: 400; font-size: 10px; color: #6B645A; }
+.journal { display: flex; flex-direction: column; gap: 6px; }
+.jday { background: #FFFFFF; border: 1px solid #E2D9C3; border-radius: 6px; padding: 8px 10px; }
+.jday .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; }
+.jday .top b { font-weight: 650; }
+.jday .top .n { color: #6B645A; font-size: 11px; font-variant-numeric: tabular-nums; }
+.jday .bars { display: flex; gap: 3px; margin-top: 6px; }
+.jday .bars i { height: 18px; flex: 1; background: #EDE6D3; border-radius: 2px; min-width: 0; }
+.jday .bars i.done { background: #1B5E3B; }
+.jday .bars i.quit { background: #D6CCB2; }
+.jday .topsites { font-size: 11px; color: #6B645A; margin-top: 5px; }
+.jday .topsites b { color: #1C1917; font-weight: 600; }
 .row { display: flex; gap: 8px; }
 .btn { flex: 1; padding: 9px 10px; border-radius: 6px; font-weight: 650; cursor: pointer; font-size: 13px; border: 1px solid #1C1917; font-family: inherit; }
 .btn:active { transform: translateY(1px); }
@@ -91,13 +107,20 @@ details summary { font-size: 11.5px; color: #6B645A; cursor: pointer; }
   </section>
 
   <section class="controls" aria-label="Session controls">
+    <div class="sprints" role="group" aria-label="Session length">
+      <button class="sprint" data-min="15">15<small>sprint</small></button>
+      <button class="sprint" data-min="25">25<small>classic</small></button>
+      <button class="sprint" data-min="50">50<small>deep</small></button>
+      <button class="sprint" data-min="120">120<small>marathon</small></button>
+    </div>
+    <div class="hint">Micro-sprints for short attention: 15 or 25. When 25 feels easy three days in a row, move to 50.</div>
     <div class="row">
       <button class="btn" id="pin" title="Pin the tab you are on as a study tab">Pin this tab</button>
       <button class="btn" id="start">Start 2-hr session</button>
       <button class="btn" id="stop" style="display:none">End</button>
     </div>
     <div class="row" id="setrow">
-      <div style="flex:1"><label for="minutes">Minutes</label><input id="minutes" type="number" value="120" min="25" max="240"></div>
+      <div style="flex:1"><label for="minutes">Minutes</label><input id="minutes" type="number" value="25" min="15" max="240"></div>
       <div style="flex:2"><label for="whitelist">Extra allowed domains</label><input id="whitelist" type="text" placeholder="docs.google.com, coursera.org"></div>
     </div>
   </section>
@@ -113,8 +136,13 @@ details summary { font-size: 11.5px; color: #6B645A; cursor: pointer; }
 
   <details>
     <summary>How it works</summary>
-    <div class="hint">Pin your lecture tab first — switches between pinned tabs are free and never counted. A 120-minute session runs 50 focus, 10 break, 60 focus. Jail pauses during the break; blocks stay on. YouTube lectures, search, playlists and channels stay open; Shorts, home, trending and explore are blocked. Four or more YouTube searches in five minutes triggers a nudge.</div>
+    <div class="hint">Pin your lecture tab first — switches between pinned tabs are free and never counted. 15–25 min runs as one block, no break. 35–69 runs 25 focus, 5 break, rest focus. 70+ runs 50 focus, 10 break, rest focus. Jail pauses during the break; blocks stay on. YouTube lectures, search, playlists and channels stay open; Shorts, home, trending and explore are blocked. Four or more YouTube searches in five minutes triggers a nudge.</div>
   </details>
+
+  <section class="journalwrap" id="journalwrap" aria-label="Your week" style="display:none">
+    <h3>Your week</h3>
+    <div class="journal" id="journal"></div>
+  </section>
 </main>
 <script src="popup.js"></script>
 </body>
