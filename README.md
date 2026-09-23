@@ -1,4 +1,4 @@
-# 🔒 FocusLock — Study Guard (v2.0.0)
+# 🔒 FocusLock — Study Guard (v2.1.0)
 
 A Chrome/Edge/Brave MV3 extension for students who keep tab-switching while studying.
 Study pages stay open. Distractions wait. Urges get parked, not punished.
@@ -54,9 +54,14 @@ entirely (useless when your lecture IS on YouTube) or are one click to ignore.
 - `store.js` — versioned state + v1 migration
 - `background.js` — session engine, enforcement pipeline, jail, alarms
 - `content.js` — thin SPA navigation mirror (no polling)
-- `popup.html` / `popup.js` — timer, goal, pins, parking, journal, debrief
-- `blocked.html` / `jail.html` / `break.html` — pause screens with return-to-study
-- `options.html` — Focus / Blocking / Data / About settings
+- `popup.html` / `popup.js` — Focus/Journal/Sites tabs, setup, timer, debrief
+- `styles/` — design tokens, base, components (one system, light/dark/system)
+- `ui.js` — shared theme/toast/dialog/icon helpers, no business logic
+- `blocked.html` / `blocked.js` — pause screen + deliberate emergency access
+- `jail.html` / `jail.js` — calm wait screen with return-to-study
+- `break.html` / `break.js` — break screen with next-block preview
+- `onboarding.html` / `onboarding.js` — 4-screen first-run (opens on install)
+- `options.html` / `options.js` — General/Focus/Sites/Data/About rail settings
 - `PRIVACY.md` / `STORE_LISTING.md` / `FOCUSLOCK_AUDIT.md` — privacy, store draft, audit
 
 ## Tests

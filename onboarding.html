@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/components.css">
+<title>Welcome to FocusLock</title>
+<style>
+  body { max-width: 520px; margin: 0 auto; padding: 40px 20px 48px; }
+  .steps { display: flex; gap: 6px; margin: 16px 0; }
+  .steps i { height: 4px; flex: 1; border-radius: 2px; background: var(--surface-subtle); }
+  .steps i.on { background: var(--accent); }
+  .opt { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-family: inherit; font-size: 13px; margin-bottom: 8px; }
+  .opt[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+  .opt .r { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-strong); flex: none; }
+  .opt[aria-pressed="true"] .r { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 2px var(--surface); }
+</style>
+</head>
+<body>
+<main class="card card-pad" aria-labelledby="obTitle">
+  <div class="kicker">FocusLock</div>
+  <div class="steps" aria-hidden="true"><i id="s1" class="on"></i><i id="s2"></i><i id="s3"></i><i id="s4"></i></div>
+  <div id="obBody"></div>
+</main>
+<script src="ui.js"></script>
+<script src="onboarding.js"></script>
+</body>
+</html>

@@ -1,139 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8">
+<head>
+<meta charset="utf-8">
 <link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/components.css">
 <title>FocusLock settings</title>
 <style>
-:root { color-scheme: light dark; }
-body { font-family: "Inter", system-ui, sans-serif; max-width: 600px; margin: 36px auto; padding: 0 20px; font-size: 13.5px; line-height: 1.6; background: #F5F1E8; color: #1C1917; }
-@media (prefers-color-scheme: dark) { body { background: #14120F; color: #EDE8DE; } body p, body .hint { color: #A39E93; } textarea, input { background: #14120F !important; border-color: #2E2A23 !important; color: #EDE8DE !important; } section { border-color: #2E2A23 !important; background: #1D1A16 !important; } }
-h1 { font-size: 18px; margin: 0 0 4px; }
-p, .hint { color: #57534E; }
-section { border: 1px solid #E3DCC8; background: #FFFFFF; border-radius: 8px; padding: 16px; margin: 14px 0; }
-h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 10px; }
-label.row { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0; cursor: pointer; }
-label.row input { margin-top: 4px; }
-textarea, input[type=text], input[type=number] { border: 1px solid #D6CCB2; border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 13px; }
-textarea { width: 100%; box-sizing: border-box; }
-button { padding: 9px 22px; border-radius: 6px; background: #1C1917; color: #FAF7F0; border: 1px solid #1C1917; font-weight: 650; font-size: 13px; cursor: pointer; font-family: inherit; }
-button.ghost { background: transparent; color: inherit; border-color: #D6CCB2; }
-button:focus-visible { outline: 2px solid #B45309; outline-offset: 2px; }
-#ok { margin-left: 10px; }
-.tag { display: inline-block; font-size: 11px; border: 1px solid #D6CCB2; border-radius: 20px; padding: 2px 10px; margin: 2px 4px 2px 0; }
-.tag button { padding: 0 4px; margin-left: 6px; background: none; border: none; color: inherit; cursor: pointer; font-size: 12px; }
-</style></head>
+  body { max-width: 860px; margin: 0 auto; padding: 28px 20px 48px; }
+  .layout { display: flex; gap: 24px; margin-top: 16px; }
+  nav.rail { flex: 0 0 170px; display: flex; flex-direction: column; gap: 2px; position: sticky; top: 20px; align-self: flex-start; }
+  nav.rail button { border: none; background: none; text-align: left; font-size: 13px; font-weight: 600; color: var(--text-secondary); padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; }
+  nav.rail button[aria-selected="true"] { color: var(--text); background: var(--surface-subtle); }
+  nav.rail button:hover { color: var(--text); }
+  .panes { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .pane { display: none; flex-direction: column; gap: 16px; }
+  .pane.on { display: flex; }
+  .site-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); margin-bottom: 8px; }
+  .site-item .grow { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  kbd { font-family: var(--mono); font-size: 11.5px; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; }
+  @media (max-width: 640px) {
+    .layout { flex-direction: column; }
+    nav.rail { flex: none; flex-direction: row; overflow-x: auto; position: static; }
+    nav.rail button { white-space: nowrap; }
+  }
+</style>
+</head>
 <body>
 <h1>FocusLock settings</h1>
-<p>Everything is stored only in this browser. No account, no analytics.</p>
-
-<section aria-label="Focus">
-  <h2>Focus</h2>
-  <label class="row"><span style="flex:1">Default session length (minutes)<br><span class="hint">Used to prefill the popup.</span></span><input id="defMin" type="number" min="5" max="240" value="25" style="width:80px"></label>
-  <label class="row"><input id="ytGuard" type="checkbox" checked><span>YouTube study guard<br><span class="hint">On: Shorts, home, trending, explore, gaming and podcasts pause during sessions. Lectures, search, playlists, live and channels stay open. Off: all of YouTube stays open.</span></span></label>
-  <label class="row"><input id="emPass" type="checkbox" checked><span>Emergency pass<br><span class="hint">Lets you open one paused site for 2 minutes with a written reason, logged in the session.</span></span></label>
-</section>
-
-<section aria-label="Blocking">
-  <h2>Blocked domains</h2>
-  <p>Paused in every session. One domain per line (example: instagram.com). Subdomains are included automatically.</p>
-  <div id="defaults" aria-label="Built-in blocklist"></div>
-  <label for="customs" style="font-weight:600;display:block;margin:10px 0 4px">Your extra domains</label>
-  <textarea id="customs" rows="6" placeholder="chess.com&#10;cricbuzz.com"></textarea>
-  <div style="margin-top:10px"><button id="save">Save</button><span id="ok" role="status"></span></div>
-</section>
-
-<section aria-label="Data">
-  <h2>Data</h2>
-  <p>History keeps your last 30 sessions, only on this device.</p>
-  <div><button id="clearHist" class="ghost">Clear session history</button> <button id="resetAll" class="ghost">Reset everything</button></div>
-</section>
-
-<section aria-label="About">
-  <h2>About</h2>
-  <p>FocusLock <span id="ver"></span> · <a href="PRIVACY.md" style="color:inherit">Privacy</a> · Study pages stay open. Distractions wait.</p>
-</section>
-
-<script>
-(function () {
-  "use strict";
-  const $ = (id) => document.getElementById(id);
-  let allDefaults = [], removed = [];
-
-  async function load() {
-    const st = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
-    const s = (st && st.settings) || {};
-    $("defMin").value = s.defaultMinutes || 25;
-    $("ytGuard").checked = s.youtubeGuard !== false;
-    $("emPass").checked = s.emergencyPass !== false;
-    const bl = await chrome.runtime.sendMessage({ type: "GET_BLOCKLIST" });
-    allDefaults = bl.allDefaults || [];
-    removed = bl.removed || [];
-    $("customs").value = (bl.customs || []).join("\n");
-    renderDefaults(bl.defaults || []);
-    $("ver").textContent = "v" + (chrome.runtime.getManifest().version || "");
-  }
-
-  function renderDefaults(active) {
-    const box = $("defaults");
-    box.innerHTML = "";
-    const on = new Set(active);
-    for (const d of allDefaults) {
-      const span = document.createElement("span");
-      span.className = "tag";
-      const label = document.createElement("span");
-      label.textContent = (on.has(d) ? "✓ " : "✕ ") + d;
-      label.style.opacity = on.has(d) ? "1" : "0.55";
-      const btn = document.createElement("button");
-      btn.textContent = on.has(d) ? "remove" : "restore";
-      btn.setAttribute("aria-label", (on.has(d) ? "Remove " : "Restore ") + d);
-      btn.onclick = () => {
-        if (on.has(d)) { on.delete(d); }
-        else { on.add(d); }
-        removed = allDefaults.filter((x) => !on.has(x));
-        renderDefaults([...on]);
-      };
-      span.appendChild(label);
-      span.appendChild(btn);
-      box.appendChild(span);
-    }
-  }
-
-  $("save").onclick = async () => {
-    const customs = $("customs").value.split("\n").map((s) => s.trim()).filter(Boolean);
-    const defaults = allDefaults.filter((d) => !removed.includes(d));
-    await chrome.runtime.sendMessage({ type: "SET_BLOCKLIST", customs, defaults });
-    await chrome.runtime.sendMessage({
-      type: "SAVE_SETTINGS",
-      settings: {
-        defaultMinutes: Math.min(240, Math.max(5, parseInt($("defMin").value) || 25)),
-        youtubeGuard: $("ytGuard").checked,
-        emergencyPass: $("emPass").checked,
-      },
-    });
-    $("ok").textContent = "Saved.";
-    setTimeout(() => $("ok").textContent = "", 2000);
-  };
-
-  $("clearHist").onclick = async () => {
-    await chrome.runtime.sendMessage({ type: "CLEAR_HISTORY" });
-    $("ok").textContent = "History cleared.";
-    setTimeout(() => $("ok").textContent = "", 2000);
-  };
-
-  $("resetAll").onclick = async () => {
-    const btn = $("resetAll");
-    if (!btn.dataset.armed) {
-      btn.dataset.armed = "1";
-      btn.textContent = "Click again to erase all FocusLock data";
-      setTimeout(() => { btn.dataset.armed = ""; btn.textContent = "Reset everything"; }, 4000);
-      return;
-    }
-    await chrome.storage.local.clear();
-    location.reload();
-  };
-
-  load();
-})();
-</script>
+<p class="hint">Everything is stored only in this browser. No account, no analytics.</p>
+<div class="layout">
+  <nav class="rail" role="tablist" aria-label="Settings sections">
+    <button role="tab" aria-selected="true" data-pane="general">General</button>
+    <button role="tab" aria-selected="false" data-pane="focus">Focus</button>
+    <button role="tab" aria-selected="false" data-pane="sites">Blocked sites</button>
+    <button role="tab" aria-selected="false" data-pane="data">Data</button>
+    <button role="tab" aria-selected="false" data-pane="about">About</button>
+  </nav>
+  <div class="panes">
+    <div class="pane on" id="pane-general" role="tabpanel" aria-label="General" tabindex="0">
+      <section class="card card-pad" aria-label="Appearance">
+        <h2>Appearance</h2>
+        <div class="field"><label for="themeSel">Theme</label>
+          <select class="select" id="themeSel" style="max-width:220px">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select></div>
+      </section>
+      <section class="card card-pad" aria-label="Session defaults">
+        <h2>Session defaults</h2>
+        <div class="field"><label for="defMin">Default length (minutes)</label>
+          <input class="input" id="defMin" type="number" min="5" max="240" value="25" style="max-width:120px"></div>
+        <div class="hint">Used to prefill the popup duration.</div>
+      </section>
+      <section class="card card-pad" aria-label="Keyboard shortcuts">
+        <h2>Keyboard shortcuts</h2>
+        <div class="hint">Popup: <kbd>Tab</kbd> moves, <kbd>Enter</kbd> activates, <kbd>Esc</kbd> closes dialogs. Full-page screens are keyboard navigable. To pin a global shortcut, open <kbd>chrome://extensions/shortcuts</kbd>.</div>
+      </section>
+    </div>
+    <div class="pane" id="pane-focus" role="tabpanel" aria-label="Focus" tabindex="0">
+      <section class="card card-pad" aria-label="Study protection">
+        <h2>Study protection</h2>
+        <label class="toggle"><input type="checkbox" id="ytGuard" checked><span class="track" aria-hidden="true"></span>
+          <span class="t-body"><b>YouTube study guard</b><span>Shorts, home, trending, explore, gaming and podcasts pause. Lectures, search, playlists, live and channels stay open.</span></span></label>
+        <label class="toggle"><input type="checkbox" id="emPass" checked><span class="track" aria-hidden="true"></span>
+          <span class="t-body"><b>Emergency access</b><span>One paused site for 2 minutes with a written reason, logged in the session.</span></span></label>
+      </section>
+      <section class="card card-pad" aria-label="Session behavior">
+        <h2>Session behavior</h2>
+        <div class="field"><label for="allowList">Extra allowed domains (this session type)</label>
+          <input class="input" id="allowList" type="text" placeholder="docs.google.com, coursera.org" autocomplete="off">
+          <div class="hint">Comma-separated. Applies to sessions you start after saving.</div></div>
+      </section>
+    </div>
+    <div class="pane" id="pane-sites" role="tabpanel" aria-label="Blocked sites" tabindex="0">
+      <section class="card card-pad" aria-label="Distraction list">
+        <h2>Blocked sites</h2>
+        <p class="hint">Sites paused during focus sessions. Subdomains are included automatically.</p>
+        <div class="field"><label for="siteSearch">Search sites</label>
+          <input class="input" id="siteSearch" type="text" placeholder="Search sites…" autocomplete="off"></div>
+        <div id="siteList"></div>
+        <div class="field" id="addBox" hidden><label for="newSite">Website</label>
+          <input class="input" id="newSite" type="text" placeholder="example.com" autocomplete="off">
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-secondary" id="cancelAdd">Cancel</button>
+            <button class="btn btn-primary" id="confirmAdd">Add site</button>
+          </div></div>
+        <div><button class="btn btn-secondary btn-sm" id="addBtn">+ Add website</button></div>
+      </section>
+    </div>
+    <div class="pane" id="pane-data" role="tabpanel" aria-label="Data" tabindex="0">
+      <section class="card card-pad" aria-label="Journal">
+        <h2>Journal</h2>
+        <p class="hint">History keeps your last 30 sessions, only on this device.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary" id="clearHist">Clear session history</button>
+          <button class="btn btn-danger" id="resetAll">Reset everything</button>
+        </div>
+      </section>
+    </div>
+    <div class="pane" id="pane-about" role="tabpanel" aria-label="About" tabindex="0">
+      <section class="card card-pad" aria-label="About FocusLock">
+        <h2>About</h2>
+        <p class="hint">FocusLock <span id="ver"></span> · Study pages stay open. Distractions wait.</p>
+        <p class="hint">100% local: no account, no analytics, no servers. <a href="PRIVACY.md" style="color:inherit">Privacy</a> (bundled doc).</p>
+      </section>
+    </div>
+  </div>
+</div>
+<script src="ui.js"></script>
+<script src="options.js"></script>
 </body>
 </html>
