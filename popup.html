@@ -1,174 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8">
+<head>
+<meta charset="utf-8">
 <link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/components.css">
 <style>
-:root { color-scheme: light dark; }
-* { box-sizing: border-box; }
-body { font-family: "Inter", system-ui, sans-serif; width: 340px; margin: 0; padding: 0; font-size: 13px; line-height: 1.5; background: #F5F1E8; color: #1C1917; }
-@media (prefers-color-scheme: dark) {
-  body { background: #14120F; color: #EDE8DE; }
-  header { border-color: #26221C !important; }
-  .timer, .studytab, details, .urge { background: #1D1A16 !important; border-color: #2E2A23 !important; }
-  .preset, #pin, #pinIdle, #stop, #snap { background: transparent !important; color: #EDE8DE !important; border-color: #2E2A23 !important; }
-  input[type=text], input[type=number] { background: #14120F !important; border-color: #2E2A23 !important; color: #EDE8DE !important; }
-  .muted, .sec-label, label, .hint, #eta, #sTimeK { color: #A39E93 !important; }
-  .empty { border-color: #3A342A !important; color: #A39E93 !important; }
-  .jday { background: #14120F !important; border-color: #2E2A23 !important; }
-}
-header { display: flex; align-items: center; gap: 8px; padding: 11px 14px 9px; border-bottom: 1px solid #E3DCC8; }
-.brand { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #B8AE99; flex: none; }
-.dot.live { background: #1C1917; }
-.dot.rest { background: #B45309; }
-@media (prefers-color-scheme: dark) { .dot.live { background: #E2A63B; } }
-#streak { margin-left: auto; font-size: 11px; font-weight: 600; border: 1px solid #D6CCB2; border-radius: 6px; padding: 2px 8px; }
-#gear { background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; }
-main { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
-.timer { background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 8px; padding: 14px; }
-.phase-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-#phaseName { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
-#eta { font-size: 11px; color: #57534E; }
-.clock { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
-#sTime { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, Menlo, monospace; line-height: 1.1; font-variant-numeric: tabular-nums; }
-#sTimeK { font-size: 11px; color: #57534E; }
-#goalLine { font-size: 12.5px; font-weight: 600; margin-top: 4px; }
-.rule { height: 2px; background: #E3DCC8; margin-top: 10px; border-radius: 1px; }
-.rule i { display: block; height: 100%; width: 0%; background: #1C1917; border-radius: 1px; }
-@media (prefers-color-scheme: dark) { .rule { background: #2E2A23; } .rule i { background: #E2A63B; } }
-.ledger { display: flex; gap: 6px; font-size: 11px; color: #57534E; margin-top: 8px; font-variant-numeric: tabular-nums; }
-.sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #57534E; margin: 0 0 6px; font-weight: 700; }
-.presets { display: flex; gap: 6px; }
-.preset { flex: 1; padding: 8px 4px; border-radius: 6px; border: 1px solid #D6CCB2; background: #FFFFFF; font-weight: 650; font-size: 12px; cursor: pointer; font-family: inherit; color: inherit; }
-.preset small { display: block; font-weight: 400; font-size: 10px; opacity: 0.7; }
-.row { display: flex; gap: 8px; margin-top: 8px; }
-.btn { flex: 1; padding: 9px 10px; border-radius: 6px; font-weight: 650; cursor: pointer; font-size: 13px; border: 1px solid transparent; font-family: inherit; }
-.btn:focus-visible, .preset:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #B45309; outline-offset: 2px; }
-#start, #park { background: #1C1917; color: #FAF7F0; }
-@media (prefers-color-scheme: dark) { #start, #park { background: #E2A63B; color: #14120F; } }
-#pin, #pinIdle { background: transparent; border-color: #D6CCB2; color: inherit; }
-#stop { background: transparent; border-color: #D6CCB2; color: inherit; flex: 0 0 76px; }
-#park { flex: 0 0 76px; }
-.studytab { display: flex; align-items: center; gap: 9px; background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; }
-.studytab img { width: 16px; height: 16px; border-radius: 3px; flex: none; }
-.studytab .t { flex: 1; min-width: 0; }
-.studytab .t b { display: block; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.studytab .t span { font-size: 11px; opacity: 0.75; }
-.studytab button { flex: none; background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; font-size: 14px; padding: 2px 6px; color: inherit; }
-.empty { font-size: 12px; border: 1px dashed #C9BFA6; border-radius: 6px; padding: 9px 10px; opacity: 0.85; }
-label { font-size: 11px; display: block; margin: 0 0 4px; font-weight: 600; }
-input[type=number], input[type=text] { width: 100%; height: 32px; border: 1px solid #D6CCB2; border-radius: 6px; padding: 6px 9px; font-size: 12.5px; font-family: inherit; background: #FFFFFF; color: inherit; }
-input::placeholder { opacity: 0.5; }
-.urge { display: flex; gap: 8px; background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 6px; padding: 7px 9px; margin-top: 5px; font-size: 12px; }
-.urge .ago { opacity: 0.65; font-size: 10.5px; white-space: nowrap; margin-left: auto; flex: none; }
-details { border: 1px solid #E3DCC8; border-radius: 6px; background: #FFFFFF; }
-details summary { font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 10px; list-style: none; }
-details summary::-webkit-details-marker { display: none; }
-details summary::before { content: "+ "; }
-details[open] summary::before { content: "– "; }
-details .body { padding: 0 10px 10px; }
-.hint, .muted { font-size: 11px; opacity: 0.75; margin-top: 6px; line-height: 1.6; }
-#notice { display: none; font-size: 12px; border-radius: 6px; padding: 8px 10px; border: 1px solid #D6CCB2; }
-#notice.show { display: block; }
-#phaseLine { margin-top: 10px; }
-.phase { font-size: 12px; padding: 8px 10px; border: 1px solid #E3DCC8; border-left: 3px solid #1C1917; border-radius: 0 6px 6px 0; }
-.phase .next { display: block; font-size: 11px; opacity: 0.75; margin-top: 2px; }
-#searchNote { display: none; margin-top: 8px; font-size: 11.5px; border: 1px solid #D6CCB2; border-left: 3px solid #B45309; border-radius: 0 6px 6px 0; padding: 7px 10px; }
-#journal { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.jday { border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 10px; }
-.jday .top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
-.jday .bars { display: flex; gap: 3px; margin-top: 6px; }
-.jday .bars i { height: 12px; flex: 1; background: #E3DCC8; border-radius: 2px; min-width: 0; }
-.jday .bars i.done { background: #1C1917; }
-@media (prefers-color-scheme: dark) { .jday .bars i { background: #2E2A23; } .jday .bars i.done { background: #E2A63B; } }
-#debrief { display: none; border: 1px solid #1C1917; border-radius: 8px; padding: 12px; }
-@media (prefers-color-scheme: dark) { #debrief { border-color: #E2A63B; } }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-</style></head>
+  body { width: 360px; min-height: 520px; max-height: 600px; overflow-y: auto; }
+  header.top { display: flex; align-items: center; gap: 8px; padding: 12px 16px 10px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  header .brand { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
+  header .sub { font-size: 11px; color: var(--text-secondary); }
+  header .sp { flex: 1; }
+  main { padding: 16px; display: flex; flex-direction: column; gap: 16px; padding-bottom: 20px; }
+  .timer-wrap { text-align: center; padding: 20px 12px 14px; }
+  .timer-wrap .phase { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+  .timer-wrap .goal { font-size: 13px; font-weight: 600; margin-top: 8px; }
+  .timer-wrap .next { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .timer-wrap .progress { margin-top: 14px; }
+  .controls { display: flex; gap: 8px; }
+  .controls .btn { flex: 1; }
+  .view { display: none; flex-direction: column; gap: 16px; }
+  .view.on { display: flex; }
+  nav.tabs { display: flex; border-top: 1px solid var(--border); position: sticky; bottom: 0; background: var(--bg); }
+  nav.tabs button { flex: 1; border: none; background: none; color: var(--text-secondary); font-size: 11px; font-weight: 600; padding: 10px 4px 12px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; font-family: inherit; }
+  nav.tabs button[aria-selected="true"] { color: var(--accent); }
+  nav.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .lede { font-size: 13px; color: var(--text-secondary); line-height: 1.55; }
+  .recent-row { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .recent-row:last-child { border-bottom: none; }
+  .recent-row .m { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .day-row { padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .day-row:last-child { border-bottom: none; }
+  .day-row .top { display: flex; justify-content: space-between; font-size: 12.5px; }
+  .day-row .m { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  @media (max-width: 340px) { body { width: 320px; } .timer-big { font-size: 48px; } }
+</style>
+</head>
 <body>
-<header>
-  <div class="brand"><span id="dot" class="dot" aria-hidden="true"></span>FocusLock</div>
-  <span id="streak" style="display:none"></span>
-  <button id="gear" title="Settings" aria-label="Open settings">⚙</button>
+<header class="top">
+  <div>
+    <div class="brand"><span class="dot-live" id="liveDot" style="visibility:hidden" aria-hidden="true"></span>FocusLock</div>
+    <div class="sub" id="headSub">Study session</div>
+  </div>
+  <div class="sp"></div>
+  <span class="badge" id="streakBadge" style="display:none"></span>
+  <button class="icon-btn" id="gearBtn" aria-label="Open settings"></button>
 </header>
 <main>
-  <div id="notice" role="status"></div>
-
-  <section class="timer" aria-label="Session timer" aria-live="polite">
-    <div class="phase-row"><span id="phaseName">Ready</span><span id="eta"></span></div>
-    <div class="clock"><span id="sTime">–</span><span id="sTimeK">left</span></div>
-    <div id="goalLine" style="display:none"></div>
-    <div class="rule" aria-hidden="true"><i id="bar"></i></div>
-    <div class="ledger"><span><b id="sSwitch">0</b> switches</span><span aria-hidden="true">·</span><span><b id="sUrge">0</b> parked</span><span aria-hidden="true">·</span><span><b id="sBlocked">0</b> paused</span></div>
-    <div id="phaseLine"></div>
-    <div id="searchNote" role="status"></div>
-    <div id="planLine" class="hint">Lectures open · feeds paused</div>
-  </section>
-
-  <section id="debrief" aria-label="Session summary"></section>
-
-  <section id="setupSec" aria-label="Start a session">
-    <p class="sec-label">Start a session</p>
-    <div style="margin-bottom:8px"><label for="goal">What are you working on? (optional)</label><input id="goal" type="text" maxlength="120" placeholder="e.g. GATE Operating Systems"></div>
-    <div class="presets" role="group" aria-label="Session length">
-      <button class="preset" data-min="25">25<small>classic</small></button>
-      <button class="preset" data-min="50">50<small>deep</small></button>
-      <button class="preset" data-min="90">90<small>long</small></button>
-      <button class="preset" data-min="120">120<small>marathon</small></button>
-    </div>
-    <div class="row">
-      <button class="btn" id="pinIdle" title="Pin the tab you are on as a study tab">Pin this tab</button>
-      <button class="btn" id="start">Start session</button>
-    </div>
-  </section>
-
-  <section id="activeSec" aria-label="Session controls" style="display:none">
-    <div class="row" style="margin-top:0">
-      <button class="btn" id="pin" title="Pin the tab you are on as a study tab">Pin this tab</button>
-      <button class="btn" id="stop">End</button>
-    </div>
-  </section>
-
-  <section id="studySec" aria-label="Study tabs" style="display:none">
-    <p class="sec-label">Study tabs <span id="pinCount"></span></p>
-    <div id="studyList"></div>
-  </section>
-
-  <section id="traySec" aria-label="Pinned tabs" style="display:none">
-    <p class="sec-label">Pinned for next session <span id="trayCount"></span></p>
-    <div id="trayList"></div>
-  </section>
-
-  <section id="parkSec" aria-label="Park an urge" style="display:none">
-    <p class="sec-label">Park an urge</p>
-    <div class="row" style="margin-top:0">
-      <input id="urge" type="text" maxlength="200" placeholder="Name it instead of opening it" style="flex:1" aria-label="Urge to park">
-      <button class="btn" id="park">Park</button>
-    </div>
-    <div id="urges"></div>
-  </section>
-
-  <details id="optDetails">
-    <summary>Options</summary>
-    <div class="body">
-      <div class="row" style="margin-top:0">
-        <div style="flex:1"><label for="minutes">Minutes</label><input id="minutes" type="number" value="25" min="5" max="240"></div>
-        <div style="flex:2"><label for="whitelist">Extra allowed domains</label><input id="whitelist" type="text" placeholder="docs.google.com, coursera.org"></div>
+  <div class="view on" id="view-focus" role="tabpanel" aria-label="Focus" tabindex="0">
+    <div id="stateHost" style="display:flex;flex-direction:column;gap:16px"></div>
+  </div>
+  <div class="view" id="view-journal" role="tabpanel" aria-label="Journal" tabindex="0">
+    <section class="section" aria-label="This week">
+      <h2>Journal</h2>
+      <div id="weekSummary" class="hint"></div>
+      <div id="journalList"></div>
+    </section>
+    <section class="section" aria-label="Consistency">
+      <h2>Consistency</h2>
+      <div id="consistency" class="hint"></div>
+    </section>
+  </div>
+  <div class="view" id="view-sites" role="tabpanel" aria-label="Sites" tabindex="0">
+    <section class="section" aria-label="Study pages">
+      <h2>Study pages</h2>
+      <div id="sitesStudy"></div>
+    </section>
+    <section class="section" aria-label="Parked urges">
+      <h2>Park this for later</h2>
+      <div id="sitesUrges"></div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <input class="input" id="urgeInput" type="text" maxlength="200" placeholder="What did you want to check?" aria-label="What did you want to check?" style="flex:1">
+        <button class="btn btn-secondary" id="urgeBtn">Park</button>
       </div>
-      <div class="hint">Your current tab joins the session if it passes the guard. Longer sessions include a break.</div>
-    </div>
-  </details>
-
-  <details id="journalDetails" style="display:none">
-    <summary>Your week</summary>
-    <div class="body"><div id="journal"></div><div class="hint" id="journalHint" style="display:none"></div></div>
-  </details>
-
-  <details>
-    <summary>How it works</summary>
-    <div class="body"><div class="hint">Pinned tabs are free to switch between. Sessions of 25 min or less run as one block; longer sessions add a break. Pauses stay on during breaks. YouTube lectures, search and playlists stay open; Shorts, home and trending pause.</div></div>
-  </details>
+      <div class="hint">We&rsquo;ll keep it here until your session ends.</div>
+    </section>
+    <section class="section" aria-label="Distraction list">
+      <h2>Distraction list</h2>
+      <div id="sitesBlocked" class="hint"></div>
+      <div><button class="btn btn-quiet btn-sm" id="editSites">Edit in Settings</button></div>
+    </section>
+  </div>
 </main>
+<nav class="tabs" role="tablist" aria-label="Popup sections">
+  <button role="tab" aria-selected="true" data-view="focus" id="tab-focus">Focus</button>
+  <button role="tab" aria-selected="false" data-view="journal" id="tab-journal">Journal</button>
+  <button role="tab" aria-selected="false" data-view="sites" id="tab-sites">Sites</button>
+</nav>
+<script src="ui.js"></script>
 <script src="popup.js"></script>
 </body>
 </html>
