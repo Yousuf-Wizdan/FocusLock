@@ -19,6 +19,9 @@
       emergencyPass: true,  // allow a deliberate 2-min pass with logged reason
       theme: "system",      // light | dark | system
       reduceMotion: false,
+      onboarded: false,     // first-run onboarding completed
+      nextGoal: "",         // "tomorrow" commitment from the debrief
+      sessionAllowlist: [], // extra allowed domains for sessions started after saving
     };
   }
 
@@ -120,8 +123,11 @@
   async function loadState() {
     const got = await chrome.storage.local.get([STATE_KEY, ...V1_KEYS]);
     if (got[STATE_KEY] && typeof got[STATE_KEY] === "object" && got[STATE_KEY].version === 2) {
+      const rawSettings = got[STATE_KEY].settings;
       const st = Object.assign(blankState(), got[STATE_KEY]);
-      st.settings = Object.assign(defaultSettings(), st.settings || {});
+      st.settings = Object.assign(defaultSettings(), rawSettings || {});
+      // Pre-existing users predate the onboarding flag: never force FIRST_RUN.
+      if (rawSettings && !("onboarded" in rawSettings)) st.settings.onboarded = true;
       return { state: st, migrated: false };
     }
     // Migrate v1 (or blank).
