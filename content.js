@@ -1,51 +1,119 @@
-// In-page bounce mirror of the background guard. Runs at document_start,
-// before the page paints, and re-checks on every single-page-app navigation
-// (YouTube Shorts-from-watch, Instagram reels, X) because those never reload
-// the document. Matchers mirror background.js decide() — keep in sync.
+// FocusLock content guard — thin SPA mirror. Verdict logic is NOT here:
+// it calls globalThis.FocusLockPolicy (loaded as the first content script
+// in manifest.json). Event-driven only: history patch + popstate/hashchange
+// + pageshow + MutationObserver URL check. No setInterval polling.
 (() => {
-  const BLOCKLIST_FALLBACK = [
-    "instagram.com", "x.com", "twitter.com", "threads.net", "reddit.com",
-    "facebook.com", "netflix.com", "hotstar.com", "chess.com", "lichess.org",
-    "cricbuzz.com", "amazon.in", "flipkart.com", "zomato.com", "swiggy.com",
-  ];
-  const YT_BAD = [/^\/$/, /^\/shorts(\/|$)/, /^\/feed(\/|$)/, /^\/trending/, /^\/explore/, /^\/gaming/, /^\/podcasts/];
+  "use strict";
+  if (window.__flGuard) return;
+  window.__flGuard = true;
 
-  const norm = (h) => h.toLowerCase().replace(/^www\./, "").replace(/^(m|mobile|new|old|beta|touch|i)\./, "");
+  const P = globalThis.FocusLockPolicy;
+  if (!P) return;
 
-  function decide(href, st) {
-    if (!st || !st.session || !href) return null;
-    let u;
-    try { u = new URL(href); } catch { return null; }
-    const host = norm(u.hostname);
-    if (!host) return null;
-    const wl = st.session.whitelist || [];
-    if (wl.some((w) => host === w || host.endsWith("." + w))) return null;
-    const bl = st.blocklist && st.blocklist.length ? st.blocklist : BLOCKLIST_FALLBACK;
-    if (bl.some((b) => host === b || host.endsWith("." + b))) return "blocklist";
-    if ((host === "youtube.com" || host === "music.youtube.com") && host !== "youtu.be"
-      && YT_BAD.some((re) => re.test(u.pathname))
-      && !(u.pathname === "/" && u.search.includes("list="))) return "youtube";
-    if (host === "youtu.be") return null;
-    return null;
+  function isOwnPage(href) {
+    try {
+      return href.startsWith(chrome.runtime.getURL(""));
+    } catch { return false; }
   }
 
-  async function check() {
+  async function snapshot() {
     try {
-      const st = await chrome.storage.local.get(["session", "blocklist", "blocklistVersion", "whitelist"]);
-      const rule = decide(location.href, { session: st.session, whitelist: (st.session && st.session.whitelist) || [], blocklist: st.blocklist });
-      if (rule) {
-        location.replace(chrome.runtime.getURL("blocked.html") + "?from=" + encodeURIComponent(location.href) + (rule === "youtube" ? "&why=yt" : ""));
+      const got = await chrome.storage.local.get(
+        ["fl_state_v2", "customBlocklist", "removedDefaults"]
+      );
+      const st = got.fl_state_v2;
+      if (!st || !st.session) return null;
+      const removed = new Set(got.removedDefaults || []);
+      const list = P.DEFAULT_BLOCKLIST.filter((d) => !removed.has(d))
+        .concat(got.customBlocklist || []);
+      return {
+        sessionActive: true,
+        blocklist: [...new Set(list)],
+        whitelist: st.session.whitelist || [],
+        passUntil: st.pass?.until || 0,
+        passHost: st.pass?.host || "",
+        youtubeGuard: st.settings?.youtubeGuard !== false,
+      };
+    } catch { return null; }
+  }
+
+  function verdict(url, ctx) {
+    const v = P.decide(url, ctx);
+    if (v.verdict === "blocked" && v.rule === "youtube" && ctx.youtubeGuard === false) {
+      return { verdict: "open" };
+    }
+    return v;
+  }
+
+  let checking = false;
+  async function check() {
+    if (checking) return;
+    const href = location.href;
+    if (!href || !href.startsWith("http") || isOwnPage(href)) return;
+    checking = true;
+    try {
+      const ctx = await snapshot();
+      if (!ctx) return;
+      const v = verdict(href, ctx);
+      if (v.verdict === "blocked") {
+        const dest = chrome.runtime.getURL("blocked.html") +
+          "?fl=blocked&rule=" + encodeURIComponent(v.rule || "blocklist") +
+          "&from=" + encodeURIComponent(href) +
+          "&entry=" + encodeURIComponent(v.entry || "");
+        location.replace(dest);
       }
     } catch { /* ignore */ }
+    finally { checking = false; }
   }
 
+  // SPA: YouTube/Instagram/X rewrite history without reloading.
+  const origPush = history.pushState;
+  const origReplace = history.replaceState;
+  function queueCheck() {
+    if (queueCheck.queued) return;
+    queueCheck.queued = true;
+    requestAnimationFrame(() => { queueCheck.queued = false; check(); });
+  }
+  history.pushState = function (...a) { origPush.apply(this, a); queueCheck(); };
+  history.replaceState = function (...a) { origReplace.apply(this, a); queueCheck(); };
+  window.addEventListener("popstate", queueCheck);
+  window.addEventListener("hashchange", queueCheck);
+  window.addEventListener("pageshow", queueCheck); // bfcache / back-forward restore
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) queueCheck();
+  });
+
+  // MutationObserver URL watcher: fires only when the SPA mutates the DOM
+  // AND the URL actually changed (YouTube title-swap navigations included).
+  let lastUrl = location.href;
+  let moQueued = false;
+  const mo = new MutationObserver(() => {
+    if (location.href === lastUrl || moQueued) return;
+    moQueued = true;
+    requestAnimationFrame(() => {
+      moQueued = false;
+      if (location.href !== lastUrl) {
+        lastUrl = location.href;
+        check();
+      }
+    });
+  });
+  function armObserver() {
+    lastUrl = location.href;
+    if (document.documentElement) {
+      mo.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  }
+  if (document.documentElement) armObserver();
+  else document.addEventListener("DOMContentLoaded", armObserver, { once: true });
+  // Observer is only needed while a session is active; disconnect when idle.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.fl_state_v2) {
+      const st = changes.fl_state_v2.newValue;
+      if (!st || !st.session) { try { mo.disconnect(); } catch { /* ignore */ } }
+      else { try { armObserver(); } catch { /* ignore */ } }
+    }
+  });
+
   check();
-  // SPA navigations: YouTube/Instagram/X rewrite history without reloading.
-  const origPush = history.pushState, origReplace = history.replaceState;
-  history.pushState = function (...a) { origPush.apply(this, a); setTimeout(check, 0); };
-  history.replaceState = function (...a) { origReplace.apply(this, a); setTimeout(check, 0); };
-  window.addEventListener("popstate", () => setTimeout(check, 0));
-  // Backstop for frameworks that mutate the URL without history calls.
-  let last = location.href;
-  setInterval(() => { if (location.href !== last) { last = location.href; check(); } }, 1000);
 })();
