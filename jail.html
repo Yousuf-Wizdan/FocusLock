@@ -1,87 +1,37 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8">
-<link rel="stylesheet" href="fonts/fonts.css"><title>On hold — take a breath</title>
-<style>
-:root { color-scheme: light dark; }
-body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #F5F1E8; color: #1C1917; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
-@media (prefers-color-scheme: dark) {
-  body { background: #14120F; color: #EDE8DE; }
-  .card { background: #1D1A16 !important; border-color: #2E2A23 !important; }
-  .dest { background: #14120F !important; border-color: #2E2A23 !important; }
-  p { color: #A39E93 !important; }
-  small { color: #5A544A !important; }
-}
-.card { max-width: 420px; width: 100%; background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 8px; padding: 24px; }
-.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #57534E; margin: 0 0 6px; }
-h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -0.01em; }
-#count { font-size: 48px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
-p { color: #57534E; margin: 0 0 12px; font-size: 13px; }
-.dest { display: flex; align-items: center; gap: 8px; background: #F5F1E8; border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 14px; }
-.dest span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-button { width: 100%; padding: 10px; border-radius: 6px; background: #1C1917; color: #FAF7F0; border: 1px solid #1C1917; font-weight: 650; font-size: 13.5px; cursor: pointer; font-family: inherit; }
-button:disabled { opacity: 0.55; cursor: default; }
-button:focus-visible { outline: 2px solid #B45309; outline-offset: 2px; }
-small { color: #8A8478; display: block; margin-top: 10px; font-size: 12px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-</style></head>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/components.css">
+<title>FocusLock — take a breath</title>
+</head>
 <body>
-<main class="card" aria-labelledby="h">
-  <p class="kicker">Tab switch <span id="n"></span> · noticed, not punished</p>
-  <h1 id="h">Take a breath — your session is still running.</h1>
-  <div id="count" role="timer" aria-live="polite">3</div>
-  <div class="dest">On hold: <span id="host">…</span></div>
-  <p>Study tabs are always free to switch between. This pause gives the impulse a moment to pass.</p>
-  <button id="back" disabled>Back to study</button>
-  <small id="total"></small>
-</main>
-<script>
-(function () {
-  "use strict";
-  const q = new URLSearchParams(location.search);
-  const n = parseInt(q.get("n") || "1", 10) || 1;
-  const until = parseInt(q.get("until") || "0", 10);
-  const backId = parseInt(q.get("back") || "", 10);
-  document.getElementById("n").textContent = "#" + n;
-  // Host only (curl kept for potential revisit, never rendered as a link).
-  let host = q.get("from") || "a new tab";
-  document.getElementById("host").textContent = host;
-  document.getElementById("total").textContent =
-    n === 1 ? "First switch this session. Noted — nothing more." : n + " switches this session.";
-  const btn = document.getElementById("back");
-  const el = document.getElementById("count");
-  // Persisted absolute timestamp: correct even if the SW died mid-jail.
-  function remaining() { return Math.max(0, Math.ceil((until - Date.now()) / 1000)); }
-  function draw() {
-    const s = remaining();
-    el.textContent = s;
-    if (s <= 0) {
-      clearInterval(t);
-      el.textContent = "0";
-      btn.disabled = false;
-      btn.textContent = "Back to study";
-      btn.focus();
-    } else {
-      btn.textContent = "Back to study (" + s + ")";
-    }
-  }
-  draw();
-  const t = setInterval(draw, 250);
-  btn.onclick = async () => {
-    if (Number.isInteger(backId)) {
-      try { await chrome.tabs.update(backId, { active: true }); window.close(); return; }
-      catch { /* fall through */ }
-    }
-    try {
-      const st = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
-      for (const tab of (st && st.studyTabs) || []) {
-        try { await chrome.tabs.update(tab.id, { active: true }); window.close(); return; }
-        catch { /* try next */ }
-      }
-    } catch { /* ignore */ }
-    history.back();
-  };
-})();
-</script>
+<div class="shell">
+  <main class="card" aria-labelledby="jTitle" id="st-waiting">
+    <div class="kicker">Tab switch <span id="jN"></span> · noticed</div>
+    <h1 id="jTitle">Take a breath.</h1>
+    <p class="lede" style="margin:8px 0 12px">You tried to open a page outside your session. That&rsquo;s okay — your study session is still here.</p>
+    <div class="timer-big" id="jClock" role="timer" aria-live="polite" style="text-align:center;margin:4px 0 12px">3</div>
+    <div class="rowline" aria-label="Paused page">
+      <span class="fav-fallback" id="jLetter" aria-hidden="true">?</span>
+      <div class="grow"><div class="t" id="jHost">…</div><div class="s">On hold for a few seconds</div></div>
+    </div>
+    <div class="controls" style="display:flex;gap:8px;margin-top:12px;flex-direction:column">
+      <button class="btn btn-primary btn-block" id="jBack" disabled>Back to study</button>
+      <button class="btn btn-secondary btn-block" id="jPark">Park this urge</button>
+    </div>
+    <div class="hint" id="jTotal" style="margin-top:10px"></div>
+  </main>
+  <main class="card" aria-labelledby="rTitle" id="st-returning" hidden>
+    <div class="kicker">Returning</div>
+    <h1 id="rTitle">Back to your study tab.</h1>
+    <p class="lede">Your focus session is still active.</p>
+  </main>
+</div>
+<script src="ui.js"></script>
+<script src="jail.js"></script>
 </body>
 </html>

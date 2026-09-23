@@ -1,121 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8">
-<link rel="stylesheet" href="fonts/fonts.css"><title>Blocked — this page is outside your focus session</title>
-<style>
-:root { color-scheme: light dark; }
-* { box-sizing: border-box; }
-body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #F5F1E8; color: #1C1917; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
-@media (prefers-color-scheme: dark) {
-  body { background: #14120F; color: #EDE8DE; }
-  .card { background: #1D1A16 !important; border-color: #2E2A23 !important; }
-  .site, .why { background: #14120F !important; border-color: #2E2A23 !important; }
-  p, .muted { color: #A39E93 !important; }
-  #park, #passBtn { color: #EDE8DE !important; border-color: #2E2A23 !important; }
-  input, textarea { background: #14120F !important; border-color: #2E2A23 !important; color: #EDE8DE !important; }
-  small { color: #5A544A !important; }
-}
-.card { max-width: 440px; width: 100%; background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 8px; padding: 24px; }
-.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #B45309; margin: 0 0 6px; }
-h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.01em; }
-p { color: #57534E; margin: 0 0 14px; font-size: 13px; }
-.site { display: flex; align-items: center; gap: 9px; background: #F5F1E8; border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 10px; }
-.site b { font-weight: 650; }
-.why { background: #F5F1E8; border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 16px; }
-.row { display: flex; gap: 8px; }
-button { flex: 1; padding: 10px; border-radius: 6px; font-weight: 650; font-size: 13.5px; cursor: pointer; font-family: inherit; }
-#back { background: #1C1917; color: #FAF7F0; border: 1px solid #1C1917; }
-button:focus-visible, summary:focus-visible { outline: 2px solid #B45309; outline-offset: 2px; }
-#park { background: transparent; border: 1px solid #D6CCB2; }
-details { margin-top: 10px; font-size: 12.5px; }
-details summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
-input, textarea { width: 100%; border: 1px solid #D6CCB2; border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 12.5px; margin-top: 6px; }
-#passGo { margin-top: 8px; width: 100%; background: transparent; border: 1px solid #D6CCB2; }
-.hint { font-size: 12px; color: #57534E; margin-top: 8px; }
-small { color: #8A8478; display: block; margin-top: 12px; word-break: break-all; font-size: 11px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
-</style></head>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/components.css">
+<title>FocusLock — this page is outside your study session</title>
+</head>
 <body>
-<main class="card" aria-labelledby="title">
-  <p class="kicker" id="kicker">Outside your focus session</p>
-  <h1 id="title">This page can wait.</h1>
-  <p id="desc">Your study tabs are still open. This site stays paused until your session ends.</p>
-  <div class="site"><span>Paused: <b id="host">…</b></span></div>
-  <div class="why" id="why"></div>
-  <div class="row">
-    <button id="back">Back to study</button>
-    <button id="park">Park this urge</button>
-  </div>
-  <details id="passBox">
-    <summary>Need 2 minutes here? Take an emergency pass</summary>
-    <label for="passReason">Why do you need it? (logged in your session)</label>
-    <input id="passReason" type="text" maxlength="140" placeholder="e.g. class link was sent on Instagram">
-    <button id="passGo">Open for 2 minutes</button>
-    <div class="hint">One site, 2 minutes, then the guard returns. The reason is saved with your session.</div>
-  </details>
-  <small id="from"></small>
-</main>
-<script>
-(function () {
-  "use strict";
-  const q = new URLSearchParams(location.search);
-  const raw = q.get("from") || "";
-  const rule = q.get("rule") || (q.get("why") === "yt" ? "youtube" : "blocklist");
-  const backId = parseInt(q.get("back") || "", 10);
-  let host = "";
-  try { host = new URL(raw).hostname.replace(/^www\./, ""); } catch { host = raw; }
-  document.getElementById("host").textContent = host || "this page";
-  document.getElementById("from").textContent = raw;
+<div class="shell">
+  <main class="card" aria-labelledby="flTitle" id="st-blocked">
+    <div class="kicker" id="flKicker">Outside your study session</div>
+    <h1 id="flTitle">This page is outside your study session.</h1>
+    <p class="lede" id="flGoal" style="margin:8px 0 12px"></p>
+    <div class="rowline" aria-label="Paused site">
+      <span class="fav-fallback" id="flLetter" aria-hidden="true">?</span>
+      <div class="grow"><div class="t" id="flHost">…</div><div class="s" id="flLeft"></div></div>
+    </div>
+    <div class="field" style="margin-top:12px"><label>What would you like to do?</label>
+      <div class="controls" style="display:flex;gap:8px;flex-direction:column">
+        <button class="btn btn-primary btn-block" id="flBack">Back to study</button>
+        <button class="btn btn-secondary btn-block" id="flPark">Park the urge</button>
+        <button class="btn btn-quiet btn-block" id="flPass">Emergency access — 2 min</button>
+      </div>
+    </div>
+    <details id="flWhyBox" style="margin-top:4px">
+      <summary style="cursor:pointer;font-weight:600;font-size:12.5px">Why is this blocked?</summary>
+      <div class="hint" id="flWhy" style="margin-top:6px"></div>
+    </details>
+  </main>
 
-  const why = document.getElementById("why");
-  if (rule === "youtube") {
-    document.getElementById("kicker").textContent = "YouTube study guard";
-    document.getElementById("title").textContent = "Shorts can wait. The lecture can't.";
-    why.textContent = "Shorts, home, trending and explore stay paused during sessions. Lectures, search, playlists, live streams and channels stay open.";
-  } else if (q.get("entry")) {
-    why.textContent = "Paused by your blocklist (" + q.get("entry") + "). It reopens when the session ends.";
-  } else {
-    why.textContent = "You left a study tab during a focus block, so this page is on hold for a few seconds.";
-  }
+  <main class="card" aria-labelledby="emTitle" id="st-em-request" hidden>
+    <div class="kicker">Emergency access</div>
+    <h1 id="emTitle">Why do you need access?</h1>
+    <div class="field" style="margin-top:12px"><label for="emReason">Type a reason</label>
+      <input class="input" id="emReason" type="text" maxlength="140" placeholder="e.g. class link was sent here" autocomplete="off">
+      <div class="hint">This will be logged in your session.</div></div>
+    <div class="controls" style="display:flex;gap:8px">
+      <button class="btn btn-secondary" id="emCancel" style="flex:1">Cancel</button>
+      <button class="btn btn-primary" id="emGo" style="flex:1">Continue</button>
+    </div>
+  </main>
 
-  async function backToStudy() {
-    if (Number.isInteger(backId)) {
-      try {
-        await chrome.tabs.update(backId, { active: true });
-        window.close();
-        return;
-      } catch { /* fall through */ }
-    }
-    // No known study tab: open the popup's world by focusing any study tab,
-    // otherwise just go back in history.
-    try {
-      const st = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
-      const tabs = (st && st.studyTabs) || [];
-      for (const t of tabs) {
-        try { await chrome.tabs.update(t.id, { active: true }); window.close(); return; }
-        catch { /* try next */ }
-      }
-    } catch { /* ignore */ }
-    history.back();
-  }
-  document.getElementById("back").onclick = backToStudy;
-  document.getElementById("park").onclick = async () => {
-    const text = host ? ("check " + host) : raw;
-    try { await chrome.runtime.sendMessage({ type: "PARK_URGE", text }); } catch { /* worker asleep */ }
-    backToStudy();
-  };
-  document.getElementById("passGo").onclick = async () => {
-    const reason = document.getElementById("passReason").value.trim();
-    if (!reason) {
-      document.getElementById("passReason").focus();
-      return;
-    }
-    try {
-      const res = await chrome.runtime.sendMessage({ type: "REQUEST_PASS", url: raw, reason });
-      if (res && res.ok) location.replace(raw);
-    } catch { /* ignore */ }
-  };
-})();
-</script>
+  <main class="card" aria-labelledby="acTitle" id="st-em-active" hidden>
+    <div class="kicker">Emergency access</div>
+    <h1 id="acTitle">Access ends automatically.</h1>
+    <div class="timer-big" id="acClock" role="timer" aria-live="polite" style="font-size:44px;text-align:center;margin:8px 0">2:00</div>
+    <div class="hint" style="text-align:center" id="acHost"></div>
+    <div class="controls" style="display:flex;margin-top:12px">
+      <button class="btn btn-primary btn-block" id="acOpen">Continue to site</button>
+    </div>
+  </main>
+</div>
+<script src="ui.js"></script>
+<script src="blocked.js"></script>
 </body>
 </html>
