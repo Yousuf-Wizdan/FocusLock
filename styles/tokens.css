@@ -1,0 +1,88 @@
+/* FocusLock design tokens — single source of truth for all UI.
+ * Light default; dark via [data-theme="dark"]; "system" follows the OS. */
+:root {
+  --bg: #F7F7F5;
+  --surface: #FFFFFF;
+  --surface-subtle: #F0F0EC;
+  --surface-hover: #EAEAE4;
+
+  --text: #171717;
+  --text-secondary: #6B6B66;
+  --text-tertiary: #96968F;
+
+  --border: #E6E6E1;
+  --border-strong: #D6D6D0;
+
+  --accent: #3F6B4F;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E8F0EA;
+
+  --danger: #A54848;
+  --danger-soft: #F7EAEA;
+  --warning: #A06A2C;
+  --warning-soft: #F6EEDF;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --font: "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ease: ease-out;
+  --dur: 180ms;
+}
+
+[data-theme="dark"] {
+  --bg: #111210;
+  --surface: #181916;
+  --surface-subtle: #1E201C;
+  --surface-hover: #20221F;
+
+  --text: #F1F2ED;
+  --text-secondary: #9B9D96;
+  --text-tertiary: #6E7069;
+
+  --border: #2A2C28;
+  --border-strong: #3A3D36;
+
+  --accent: #7FA88A;
+  --accent-ink: #111210;
+  --accent-soft: #1E2A22;
+
+  --danger: #D18989;
+  --danger-soft: #2A1D1D;
+  --warning: #D0A468;
+  --warning-soft: #2A241A;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]):not([data-theme="dark"]) {
+    --bg: #111210;
+    --surface: #181916;
+    --surface-subtle: #1E201C;
+    --surface-hover: #20221F;
+    --text: #F1F2ED;
+    --text-secondary: #9B9D96;
+    --text-tertiary: #6E7069;
+    --border: #2A2C28;
+    --border-strong: #3A3D36;
+    --accent: #7FA88A;
+    --accent-ink: #111210;
+    --accent-soft: #1E2A22;
+    --danger: #D18989;
+    --danger-soft: #2A1D1D;
+    --warning: #D0A468;
+    --warning-soft: #2A241A;
+  }
+}
