@@ -71,7 +71,7 @@ async function updateBadge(st) {
   try {
     st = st || (await Store.loadState()).state;
     if (!st.session) { await chrome.action.setBadgeText({ text: "" }); return; }
-    await chrome.action.setBadgeBackgroundColor({ color: inBreak(st) ? "#B45309" : "#15803D" });
+    await chrome.action.setBadgeBackgroundColor({ color: inBreak(st) ? "#A06A2C" : "#3F6B4F" });
     await chrome.action.setBadgeText({ text: fmtLeft(st.session.phaseEndsAt - Date.now()) });
   } catch { /* ignore */ }
 }
@@ -85,11 +85,21 @@ async function completeSession(id, completed) {
   st._done.push(id);
   st._done = st._done.slice(-10);
   const s = st.session;
+  // Top pulling domains (for the debrief) from the switch log.
+  const counts = {};
+  for (const sw of st.switches || []) {
+    const k = sw.fromHost || "unknown";
+    counts[k] = (counts[k] || 0) + 1;
+  }
+  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
+    .map(([site, count]) => ({ site, count }));
   st.history.push({
     id, endedAt: Date.now(), goal: s.goal || "",
     planned: s.plannedMinutes || 0, completed: !!completed,
     switches: st.switchCount || 0, urges: st.urges.length || 0,
     blocked: st.blockedCount || 0, breakSkipped: !!s.breakSkipped,
+    focusedMinutes: Math.max(0, Math.round((Math.min(Date.now(), s.endsAt) - s.startedAt) / 60000)),
+    top,
   });
   await closeBreakTab(s);
   st.session = null;
@@ -316,7 +326,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.type === "START_SESSION") {
       const now = Date.now();
       const minutes = Math.min(240, Math.max(5, msg.minutes || 25));
-      const whitelist = (msg.whitelist || []).map((h) => String(h).trim().toLowerCase()).filter(Boolean);
+      const extra = (msg.whitelist || []).map((h) => String(h).trim().toLowerCase()).filter(Boolean);
+      const saved = (st.settings.sessionAllowlist || []).map((h) => String(h).trim().toLowerCase()).filter(Boolean);
+      const whitelist = [...new Set([...extra, ...saved])];
       const ctx = {
         sessionActive: true, blocklist: await Store.getBlocklist(), whitelist,
         passUntil: 0, passHost: "",
@@ -503,6 +515,67 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       return;
     }
 
+    if (msg.type === "PAUSE_SESSION" || msg.type === "RESUME_SESSION") {
+      // True pause: freeze the clock by shifting all absolute timestamps
+      // forward by the paused duration. Works across SW restarts because
+      // the paused state is persisted, not in-memory.
+      if (!st.session) { sendResponse({ ok: false, reason: "no-session" }); return; }
+      const s = st.session;
+      if (msg.type === "PAUSE_SESSION") {
+        if (s.pausedAt) { sendResponse({ ok: true, paused: true }); return; }
+        s.pausedAt = Date.now();
+        await Store.saveState(st);
+        await chrome.alarms.clearAll();
+        chrome.alarms.create("tick", { periodInMinutes: 1 });
+        updateBadge(st);
+        sendResponse({ ok: true, paused: true });
+      } else {
+        if (!s.pausedAt) { sendResponse({ ok: true, paused: false }); return; }
+        const delta = Date.now() - s.pausedAt;
+        s.pausedAt = null;
+        s.startedAt += delta;
+        s.endsAt += delta;
+        s.phaseStartedAt = (s.phaseStartedAt || Date.now()) + delta;
+        s.phaseEndsAt += delta;
+        await Store.saveState(st);
+        await chrome.alarms.clearAll();
+        chrome.alarms.create("phase", { when: s.phaseEndsAt });
+        chrome.alarms.create("focusEnd", { when: s.endsAt });
+        chrome.alarms.create("tick", { periodInMinutes: 1 });
+        updateBadge(st);
+        sendResponse({ ok: true, paused: false });
+      }
+      return;
+    }
+
+    if (msg.type === "FOCUS_TAB") {
+      const key = msg.key || "";
+      const entry = st.studyTabs.find((t) => t.key === key) ||
+        st.studyTabs.find((t) => String(t.id) === String(key));
+      if (!entry || !Number.isInteger(entry.id)) { sendResponse({ ok: false }); return; }
+      try {
+        await chrome.tabs.update(entry.id, { active: true });
+        const w = await chrome.tabs.get(entry.id);
+        if (w && w.windowId !== undefined) await chrome.windows.update(w.windowId, { focused: true });
+        sendResponse({ ok: true });
+      } catch { sendResponse({ ok: false }); }
+      return;
+    }
+
+    if (msg.type === "COMPLETE_ONBOARDING") {
+      st.settings = Object.assign(st.settings || {}, { onboarded: true });
+      await Store.saveState(st);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg.type === "SAVE_NEXT_GOAL") {
+      st.settings = Object.assign(st.settings || {}, { nextGoal: String(msg.goal || "").slice(0, 120) });
+      await Store.saveState(st);
+      sendResponse({ ok: true });
+      return;
+    }
+
     if (msg.type === "SET_BLOCKLIST") {
       const defs = new Set(P.DEFAULT_BLOCKLIST);
       const customs = [...new Set((msg.customs || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean))]
@@ -545,12 +618,24 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "focusEnd") { completeSession(st.session.id, true); return; }
 });
 
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    chrome.tabs.create({ url: chrome.runtime.getURL("onboarding.html") }).catch(() => {});
+  }
+});
+
 /* ---------- recovery on SW startup ---------- */
 (async function recover() {
   wireNavigation();
   try {
     const { state: st } = await Store.loadState();
     if (!st.session) return;
+    // Paused sessions stay paused: keep only the badge tick, never
+    // re-arm phase timers while paused.
+    if (st.session.pausedAt) {
+      updateBadge(st);
+      return;
+    }
     const now = Date.now();
     if (st.session.endsAt <= now) {
       await completeSession(st.session.id, true);
