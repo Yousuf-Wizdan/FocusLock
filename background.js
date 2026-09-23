@@ -1,135 +1,23 @@
-// FocusLock background service worker — sessions with enforced breaks,
-// tab-switch jail, blocklist + YouTube study guard, search-spiral tripwire.
+// FocusLock service worker — authoritative state + single enforcement pipeline.
+// Shared verdict logic lives in policy.js, state in store.js. No matcher
+// regexes here: every decision goes through FocusLockPolicy.decide().
+// No volatile session state: jail/bounce/completion all reconstruct from storage.
+importScripts("policy.js", "store.js");
 
-const BLOCKLIST_VERSION = 3;
-const DEFAULT_BLOCKLIST = [
-  // Social / doomscroll
-  "instagram.com", "x.com", "twitter.com", "threads.net",
-  "reddit.com", "facebook.com", "snapchat.com", "pinterest.com",
-  "pinterest.in", "quora.com", "medium.com", "tumblr.com",
-  "9gag.com", "imgur.com", "discord.com", "linkedin.com",
-  // Video / OTT (YouTube handled by the study guard, not the list)
-  "netflix.com", "hotstar.com", "jiohotstar.com", "primevideo.com",
-  "sonyliv.com", "zee5.com", "mxplayer.in", "dailymotion.com",
-  "hulu.com", "twitch.tv",
-  // Chess, cricket, shopping, food — the "5-minute check" traps
-  "chess.com", "lichess.org",
-  "cricbuzz.com", "espncricinfo.com", "cricinfo.com",
-  "amazon.com", "amazon.in", "flipkart.com", "myntra.com",
-  "meesho.com", "ajio.com", "snapdeal.com", "olx.in",
-  "zomato.com", "swiggy.com", "dream11.com",
-];
+const P = globalThis.FocusLockPolicy;
+const Store = globalThis.FocusLockStore;
 
-const DEFAULT_STATE = {
-  session: null, // { startedAt, endsAt, plannedMinutes, whitelist, studyTabs, urgeLog,
-                 //   searchLog: [{at, query}], phases: [{type, minutes}], phaseIndex,
-                 //   phaseEndsAt, lastSearchNudgeAt, breakTabId }
-  switches: 0,   // switches TO pinned study tabs are free, never counted; no jail during breaks
-  blocklist: [...DEFAULT_BLOCKLIST],
-  blocklistVersion: 0,
-  pendingPins: [], // tabs pinned while idle — merged into the session on Start, then cleared
-  history: [],   // [{endedAt, planned, switches, urges, searches, completed, top:[{site,count}]}] — last 30
-};
-
-// Hosts that are study sources: never fully blocked, only their
-// distraction paths are (Shorts, home feed, trending...). Watch,
-// playlist, embed and search pages always stay open.
-const STUDY_GUARD_HOSTS = ["youtube.com", "youtu.be", "music.youtube.com"];
-
-// YouTube paths that are pure distraction (blocked during sessions).
-// Everything else (/watch, /playlist, /embed, /results, /live, channels) stays open.
-const YT_DISTRACTION_PATHS = [/^\/$/, /^\/shorts(\/|$)/, /^\/feed(\/|$)/, /^\/trending/, /^\/explore/, /^\/gaming/, /^\/podcasts/];
-
-// Search-spiral tripwire: >N YouTube searches inside WINDOW_MS = "still studying?" nudge.
 const SEARCH_WINDOW_MS = 5 * 60 * 1000;
 const SEARCH_THRESHOLD = 4;
 const SEARCH_NUDGE_COOLDOWN_MS = 10 * 60 * 1000;
+const PASS_MS = 2 * 60 * 1000;
 
-function ytDistraction(url) {
-  let u;
-  try { u = new URL(url); } catch { return false; }
-  const host = u.hostname.toLowerCase().replace(/^www\.|^m\./, "");
-  if (!STUDY_GUARD_HOSTS.includes(host)) return false;
-  if (host === "youtu.be") return false; // share links resolve to watch pages
-  return YT_DISTRACTION_PATHS.some((re) => re.test(u.pathname));
-}
+// In-flight bounce tokens (per-process only, for debounce — recovery-safe
+// because every bounce is also guarded by the ?fl= marker + storage stamp).
+const bouncing = new Set();       // tabId currently being redirected
+const lastBounceAt = new Map();   // tabId -> timestamp (debounce 1500ms)
 
-// Extract a YouTube search query from a /results URL, "" if not a search page.
-function ytSearchQuery(url) {
-  let u;
-  try { u = new URL(url); } catch { return ""; }
-  const host = u.hostname.toLowerCase().replace(/^www\.|^m\./, "");
-  if (host !== "youtube.com" && host !== "music.youtube.com") return "";
-  if (!u.pathname.startsWith("/results")) return "";
-  return (u.searchParams.get("search_query") || "").trim().slice(0, 120);
-}
-
-function fmtLeft(ms) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}` : `${m}m`;
-}
-
-// Pull a domain-looking token out of free text ("check instagram", "youtube.com shorts").
-function siteOf(text) {
-  const m = String(text || "").toLowerCase().match(/([a-z0-9][a-z0-9-]*\.)+[a-z]{2,}/);
-  return m ? m[0].replace(/^www\./, "") : "";
-}
-
-// Write-once summary when a session ends (complete OR quit early).
-// Kept to the last 30 so storage stays tiny forever.
-async function recordHistory(session, switches, completed) {
-  try {
-    const urges = (session.urgeLog || []).length;
-    const searches = (session.searchLog || []).length;
-    const counts = {};
-    for (const u of session.urgeLog || []) {
-      const key = u.site || (u.text || "").slice(0, 40) || "unnamed";
-      counts[key] = (counts[key] || 0) + 1;
-    }
-    const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5)
-      .map(([site, count]) => ({ site, count }));
-    const stored = await chrome.storage.local.get(["history"]);
-    const history = Array.isArray(stored.history) ? stored.history : [];
-    history.push({
-      endedAt: Date.now(), planned: session.plannedMinutes || 0,
-      switches: switches || 0, urges, searches, completed: !!completed, top,
-    });
-    await chrome.storage.local.set({ history: history.slice(-30) });
-  } catch { /* history is best-effort */ }
-}
-
-async function getState() {
-  const stored = await chrome.storage.local.get(Object.keys(DEFAULT_STATE));
-  const st = { ...DEFAULT_STATE, ...stored };
-  // Auto-grow the blocklist for users who stored the old short list:
-  // merge in any new defaults while keeping their custom entries.
-  if ((stored.blocklistVersion || 0) < BLOCKLIST_VERSION) {
-    const merged = new Set([...(stored.blocklist || []), ...DEFAULT_BLOCKLIST]);
-    st.blocklist = [...merged];
-    st.blocklistVersion = BLOCKLIST_VERSION;
-    try { await chrome.storage.local.set({ blocklist: st.blocklist, blocklistVersion: BLOCKLIST_VERSION }); } catch { /* ignore */ }
-  }
-  return st;
-}
-
-// Migrate legacy sessions that stored bare tab-id arrays.
-function studyList(session) {
-  if (!session) return [];
-  if (Array.isArray(session.studyTabs)) return session.studyTabs;
-  if (Array.isArray(session.studyTabIds)) {
-    session.studyTabs = session.studyTabIds
-      .filter((n) => Number.isInteger(n))
-      .map((id) => ({ id, title: "", url: "", host: "", favIcon: "", closed: false }));
-    return session.studyTabs;
-  }
-  return [];
-}
-
-// ---- phases: micro-sprints for low attention spans ----
-// 15 min -> single 15 block, no break. 25 -> single 25, no break.
-// 35–69 -> 25 focus + 5 break + rest focus (gentle on-ramp).
-// 70+ -> classic 50 focus + 10 break + rest focus.
+/* ---------- phases ---------- */
 function buildPhases(minutes) {
   if (minutes <= 25) return [{ type: "focus", minutes }];
   if (minutes < 70) return [
@@ -144,432 +32,546 @@ function buildPhases(minutes) {
   ];
 }
 
-// Normalize legacy / partial sessions so every reader can assume phases exist.
-function ensurePhases(session) {
-  if (!session) return null;
-  if (!Array.isArray(session.phases) || !session.phases.length) {
-    const remaining = Math.max(1, Math.round((session.endsAt - Date.now()) / 60000));
-    session.phases = [{ type: "focus", minutes: remaining }];
-    session.phaseIndex = 0;
-    session.phaseEndsAt = session.endsAt;
-  }
-  if (!Number.isInteger(session.phaseIndex) || session.phaseIndex >= session.phases.length) {
-    session.phaseIndex = session.phases.length - 1;
-  }
-  if (!session.phaseEndsAt) session.phaseEndsAt = session.endsAt;
-  if (!Array.isArray(session.searchLog)) session.searchLog = [];
-  return session;
+function inBreak(st) {
+  const s = st.session;
+  return !!(s && Array.isArray(s.phases) && s.phases[s.phaseIndex]?.type === "break");
 }
 
-function phaseLabel(session) {
-  const focuses = session.phases.filter((p) => p.type === "focus").length;
-  const cur = session.phases[session.phaseIndex];
-  if (cur.type === "break") return { kind: "break", text: "☕ Break" };
-  const n = session.phases.slice(0, session.phaseIndex + 1).filter((p) => p.type === "focus").length;
-  return { kind: "focus", text: focuses > 1 ? `🟢 Focus ${n} of ${focuses}` : "🟢 Focus" };
+async function withCtx(st) {
+  const blocklist = await Store.getBlocklist();
+  const ctx = {
+    sessionActive: !!st.session,
+    blocklist,
+    whitelist: st.session?.whitelist || [],
+    passUntil: st.pass?.until || 0,
+    passHost: st.pass?.host || "",
+  };
+  ctx.youtubeGuard = st.settings.youtubeGuard !== false;
+  return ctx;
 }
 
-async function updateBadge() {
+// decide() wrapper honoring the youtubeGuard setting.
+function decideUrl(url, ctx) {
+  if (!ctx.sessionActive) return { verdict: "open" };
+  const v = P.decide(url, ctx);
+  if (v.verdict === "blocked" && v.rule === "youtube" && ctx.youtubeGuard === false) {
+    return { verdict: "open" };
+  }
+  return v;
+}
+
+/* ---------- badge ---------- */
+function fmtLeft(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}` : `${m}m`;
+}
+
+async function updateBadge(st) {
   try {
-    const st = await getState();
+    st = st || (await Store.loadState()).state;
     if (!st.session) { await chrome.action.setBadgeText({ text: "" }); return; }
-    ensurePhases(st.session);
-    const breaking = st.session.phases[st.session.phaseIndex].type === "break";
-    await chrome.action.setBadgeBackgroundColor({ color: breaking ? "#f59e0b" : "#16a34a" });
+    await chrome.action.setBadgeBackgroundColor({ color: inBreak(st) ? "#B45309" : "#15803D" });
     await chrome.action.setBadgeText({ text: fmtLeft(st.session.phaseEndsAt - Date.now()) });
   } catch { /* ignore */ }
 }
 
-async function closeBreakTab(session) {
-  if (session && Number.isInteger(session.breakTabId)) {
-    try { await chrome.tabs.remove(session.breakTabId); } catch { /* already closed */ }
-    session.breakTabId = null;
+/* ---------- history / completion (exactly-once) ---------- */
+async function completeSession(id, completed) {
+  const { state: st } = await Store.loadState();
+  if (!st.session || st.session.id !== id) return { ok: false, reason: "stale" };
+  st._done = st._done || [];
+  if (st._done.includes(id)) return { ok: false, reason: "already" };
+  st._done.push(id);
+  st._done = st._done.slice(-10);
+  const s = st.session;
+  st.history.push({
+    id, endedAt: Date.now(), goal: s.goal || "",
+    planned: s.plannedMinutes || 0, completed: !!completed,
+    switches: st.switchCount || 0, urges: st.urges.length || 0,
+    blocked: st.blockedCount || 0, breakSkipped: !!s.breakSkipped,
+  });
+  await closeBreakTab(s);
+  st.session = null;
+  st.pass = null;
+  await Store.saveState(st);
+  await chrome.alarms.clearAll();
+  await chrome.action.setBadgeText({ text: "" }).catch(() => {});
+  chrome.notifications.create({
+    type: "basic", iconUrl: "icon128.png",
+    title: "FocusLock — session complete",
+    message: completed
+      ? "Session complete. Take a real break — you earned it."
+      : "Session ended. Your parked urges are in the popup.",
+  });
+  return { ok: true };
+}
+
+async function closeBreakTab(s) {
+  if (s && Number.isInteger(s.breakTabId)) {
+    try { await chrome.tabs.remove(s.breakTabId); } catch { /* closed */ }
   }
 }
 
-async function advancePhase(reason) {
-  const st = await getState();
+async function advancePhase() {
+  const { state: st } = await Store.loadState();
   if (!st.session) return;
-  const s = ensurePhases(st.session);
+  const s = st.session;
   await closeBreakTab(s);
+  s.breakTabId = null;
   s.phaseIndex += 1;
   if (s.phaseIndex >= s.phases.length) {
-    // Session complete.
-    await recordHistory(s, st.switches, true);
-    await chrome.storage.local.set({ session: null });
-    await chrome.alarms.clearAll();
-    await chrome.action.setBadgeText({ text: "" }).catch(() => {});
-    chrome.notifications.create({
-      type: "basic", iconUrl: "icon128.png",
-      title: "FocusLock — session complete",
-      message: `Done${reason === "skipped-break" ? " (break skipped)" : ""}. ${st.switches} tab-switches. Take a real break, you earned it.`,
-    });
+    await completeSession(s.id, true);
     return;
   }
   const phase = s.phases[s.phaseIndex];
-  s.phaseEndsAt = Date.now() + phase.minutes * 60 * 1000;
-  s.phaseStartedAt = Date.now();
-  await chrome.storage.local.set({ session: s });
+  const now = Date.now();
+  s.phaseStartedAt = now;
+  s.phaseEndsAt = now + phase.minutes * 60 * 1000;
+  await Store.saveState(st);
   chrome.alarms.create("phase", { when: s.phaseEndsAt });
-  updateBadge();
+  updateBadge(st);
   if (phase.type === "break") {
-    const focusDone = s.phases.slice(0, s.phaseIndex).filter((p) => p.type === "focus")
-      .reduce((a, p) => a + p.minutes, 0);
     chrome.notifications.create({
       type: "basic", iconUrl: "icon128.png",
       title: "FocusLock — break time",
-      message: `${focusDone} minutes done. Step away for ${phase.minutes} — no tabs, no phone. Switching is free during break; blocks stay on.`,
+      message: `Step away for ${phase.minutes} minutes. Switching is free during break; blocks stay on.`,
     });
     try {
-      const t = await chrome.tabs.create({ url: chrome.runtime.getURL("break.html") + "?wait=" + phase.minutes, active: true });
+      const t = await chrome.tabs.create({
+        url: chrome.runtime.getURL("break.html") + "?fl=break&wait=" + phase.minutes, active: true,
+      });
       s.breakTabId = t.id;
-      await chrome.storage.local.set({ session: s });
-    } catch { /* popup-less contexts */ }
+      const { state: st2 } = await Store.loadState();
+      if (st2.session && st2.session.id === s.id) {
+        st2.session.breakTabId = t.id;
+        await Store.saveState(st2);
+      }
+    } catch { /* ignore */ }
   } else {
     chrome.notifications.create({
       type: "basic", iconUrl: "icon128.png",
       title: "FocusLock — break over",
-      message: reason === "skipped-break" ? "Break skipped. Back to study — jail is on." : "Break over. Back to your study tab — jail is on.",
+      message: "Break over. Back to your study tab.",
     });
   }
 }
 
-// ---- session lifecycle ----
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  (async () => {
-    if (msg.type === "START_SESSION") {
-      const now = Date.now();
-      const minutes = msg.minutes || 120;
-      const whitelist = (msg.whitelist || []).map((h) => h.trim().toLowerCase()).filter(Boolean);
-      const studyTabs = Array.isArray(msg.studyTabs)
-        ? msg.studyTabs.filter((t) => t && Number.isInteger(t.id))
-            .map((t) => ({ id: t.id, title: t.title || "", url: t.url || "", host: t.host || "", favIcon: t.favIcon || "", closed: false }))
-        : [];
-      const legacyIds = Array.isArray(msg.studyTabIds) ? msg.studyTabIds.filter((n) => Number.isInteger(n)) : [];
-      for (const id of legacyIds) {
-        if (studyTabs.some((t) => t.id === id)) continue;
-        let meta = { title: "", url: "", favIcon: "" };
-        try {
-          const t = await chrome.tabs.get(id);
-          meta = { title: t.title || "", url: t.url || "", favIcon: t.favIconUrl || "" };
-        } catch { /* tab gone */ }
-        studyTabs.push({ id, title: meta.title, url: meta.url, host: hostOf(meta.url || ""), favIcon: meta.favIcon, closed: false });
-      }
-      // Merge tabs pinned while idle, then clear the tray.
-      const stored = await chrome.storage.local.get(["pendingPins"]);
-      for (const p of Array.isArray(stored.pendingPins) ? stored.pendingPins : []) {
-        if (p && Number.isInteger(p.id) && !studyTabs.some((t) => t.id === p.id)) studyTabs.push(p);
-      }
-      const phases = buildPhases(minutes);
-      const session = {
-        startedAt: now, endsAt: now + minutes * 60 * 1000, plannedMinutes: minutes,
-        whitelist, studyTabs, urgeLog: [], searchLog: [],
-        phases, phaseIndex: 0, phaseEndsAt: now + phases[0].minutes * 60 * 1000,
-        phaseStartedAt: now,
-        lastSearchNudgeAt: 0, breakTabId: null,
-      };
-      await chrome.storage.local.set({ session, switches: 0, pendingPins: [] });
-      await chrome.alarms.clearAll();
-      chrome.alarms.create("phase", { when: session.phaseEndsAt });
-      chrome.alarms.create("focusEnd", { when: session.endsAt });
-      chrome.alarms.create("tick", { periodInMinutes: 1 });
-      updateBadge();
-      const plan = phases.map((p) => `${p.minutes}m ${p.type}`).join(" → ");
-      sendResponse({ ok: true, plan });
-    } else if (msg.type === "PIN_STUDY_TAB") {
-      const st = await getState();
-      const entry = {
-        id: msg.tabId,
-        title: msg.title || "",
-        url: msg.url || "",
-        host: msg.host || hostOf(msg.url || ""),
-        favIcon: msg.favIcon || "",
-        closed: false,
-      };
-      if (!Number.isInteger(entry.id)) { sendResponse({ ok: false, reason: "bad-tab" }); return; }
-      // Fill in missing identity from the live tab — pinning must name the
-      // tab even if the caller only passed an id.
-      if (!entry.url || !entry.title) {
-        try {
-          const t = await chrome.tabs.get(entry.id);
-          entry.title = entry.title || t.title || "";
-          entry.url = entry.url || t.url || "";
-          entry.host = entry.host || hostOf(entry.url);
-          entry.favIcon = entry.favIcon || t.favIconUrl || "";
-        } catch { /* tab gone */ }
-      }
-      // Blocked pages can never be pinned: the redirect target (blocked.html)
-      // would otherwise launder a distraction into an allowed tab.
-      if (!entry.url || /(^|\/)blocked\.html($|[?#])/.test(entry.url)) {
-        sendResponse({ ok: false, reason: "blocked-page" });
-        return;
-      }
-      const entryHost = entry.host || hostOf(entry.url);
-      if (st.session) {
-        // Live session: pin straight into it, but only if the page is allowed.
-        // decide() is the same single verdict the blockers use.
-        if (decide(entry.url, st).verdict === "blocked") {
-          sendResponse({ ok: false, reason: "blocked-site", host: entryHost });
-          return;
-        }
-        // Live session: pin straight into it.
-        const tabs = studyList(st.session);
-        if (!tabs.some((t) => t.id === entry.id)) {
-          tabs.push(entry);
-          st.session.studyTabs = tabs;
-          await chrome.storage.local.set({ session: st.session });
-        }
-        sendResponse({ ok: true, studyTabs: studyList(st.session), pending: false });
-      } else {
-        // Idle: check against the stored blocklist so a distraction pinned now
-        // can't sneak into the next session via the tray.
-        const bl = st.blocklist || [];
-        const blockedEntry = bl.some((b) => entryHost === b || entryHost.endsWith("." + b));
-        if (blockedEntry || ytDistraction(entry.url)) {
-          sendResponse({ ok: false, reason: "blocked-site", host: entryHost });
-          return;
-        }
-        // Idle: hold it in the tray until Start merges it in.
-        const stored = await chrome.storage.local.get(["pendingPins"]);
-        const tray = Array.isArray(stored.pendingPins) ? stored.pendingPins : [];
-        if (!tray.some((t) => t.id === entry.id)) {
-          tray.push(entry);
-          await chrome.storage.local.set({ pendingPins: tray });
-        }
-        sendResponse({ ok: true, studyTabs: tray, pending: true });
-      }
-    } else if (msg.type === "UNPIN_STUDY_TAB") {
-      const st = await getState();
-      if (st.session) {
-        st.session.studyTabs = studyList(st.session).filter((t) => t.id !== msg.tabId);
-        await chrome.storage.local.set({ session: st.session });
-      } else {
-        const stored = await chrome.storage.local.get(["pendingPins"]);
-        const tray = Array.isArray(stored.pendingPins) ? stored.pendingPins : [];
-        await chrome.storage.local.set({ pendingPins: tray.filter((t) => t && t.id !== msg.tabId) });
-      }
-      sendResponse({ ok: true });
-    } else if (msg.type === "END_SESSION") {
-      const st = await getState();
-      if (st.session) {
-        await recordHistory(st.session, st.switches, false);
-        await closeBreakTab(st.session);
-      }
-      await chrome.storage.local.set({ session: null });
-      await chrome.alarms.clearAll();
-      await chrome.action.setBadgeText({ text: "" }).catch(() => {});
-      sendResponse({ ok: true });
-    } else if (msg.type === "GET_HISTORY") {
-      const stored = await chrome.storage.local.get(["history"]);
-      sendResponse({ history: Array.isArray(stored.history) ? stored.history : [] });
-    } else if (msg.type === "SKIP_BREAK") {
-      const st = await getState();
-      if (!st.session) { sendResponse({ ok: false }); return; }
-      ensurePhases(st.session);
-      if (st.session.phases[st.session.phaseIndex].type !== "break") { sendResponse({ ok: false, reason: "not-in-break" }); return; }
-      await advancePhase("skipped-break");
-      sendResponse({ ok: true });
-    } else if (msg.type === "PARK_URGE") {
-      const st = await getState();
-      if (st.session) {
-        const text = String(msg.text || "").slice(0, 200);
-        st.session.urgeLog.push({ at: Date.now(), text, site: siteOf(text) });
-        await chrome.storage.local.set({ session: st.session });
-        sendResponse({ ok: true, count: st.session.urgeLog.length });
-      } else sendResponse({ ok: false });
-    } else if (msg.type === "GET_STATUS") {
-      const st = await getState();
-      if (st.session) {
-        ensurePhases(st.session);
-        // Prune search log outside the tripwire window.
-        st.session.searchLog = (st.session.searchLog || []).filter((e) => Date.now() - e.at < SEARCH_WINDOW_MS);
-        // Refresh pinned-tab identities live; mark closed tabs instead of dropping them.
-        const fresh = [];
-        for (const p of studyList(st.session)) {
-          try {
-            const t = await chrome.tabs.get(p.id);
-            fresh.push({
-              id: p.id,
-              title: t.title || p.title || "",
-              url: t.url || p.url || "",
-              host: hostOf(t.url || p.url || ""),
-              favIcon: t.favIconUrl || p.favIcon || "",
-              closed: false,
-            });
-          } catch {
-            fresh.push({ ...p, closed: true });
-          }
-        }
-        st.session.studyTabs = fresh;
-        await chrome.storage.local.set({ session: st.session });
-      }
-      const cur = await getState();
-      sendResponse({ session: cur.session, switches: cur.switches, blocklist: cur.blocklist, pendingPins: cur.pendingPins || [] });
-    }
-  })();
-  return true;
-});
-
-chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name === "tick") { updateBadge(); return; }
-  if (alarm.name === "phase") { advancePhase("timer"); return; }
-  if (alarm.name === "focusEnd") {
-    const st = await getState();
-    if (st.session) {
-      await recordHistory(st.session, st.switches, true);
-      await closeBreakTab(st.session);
-    }
-    await chrome.storage.local.set({ session: null });
-    await chrome.alarms.clearAll();
-    await chrome.action.setBadgeText({ text: "" }).catch(() => { });
-    chrome.notifications.create({
-      type: "basic", iconUrl: "icon128.png",
-      title: "FocusLock — session complete",
-      message: "2 hours done. Take a real break, you earned it.",
-    });
-  }
-});
-
-// ---- enforcement: blocklist + Tab-Switch Jail ----
-function hostOf(url) {
-  try {
-    return new URL(url).hostname.toLowerCase()
-      .replace(/^www\./, "")
-      .replace(/^(m|mobile|new|old|beta|touch|i)\./, "");
-  } catch { return ""; }
+/* ---------- enforcement: ONE pipeline ---------- */
+// FocusLock pages carry ?fl=<kind> so every layer recognizes them idempotently.
+function isOwnPage(url) {
+  return !!url && url.startsWith(chrome.runtime.getURL(""));
 }
 
-// Exact-or-subdomain match only. Suffix matching on the full entry
-// ("facebook.com") already covers every real subdomain (m., mobile., new.,
-// pro., touch.). Anything outside that is either open or a different domain —
-// never match on bare substrings, so notfacebook.com stays open.
-function hostBlocked(host, st) {
-  for (const b of st.blocklist) {
-    if (host === b || host.endsWith("." + b)) return b;
+function ownPage(kind, params) {
+  return chrome.runtime.getURL(kind + ".html") + "?fl=" + kind + params;
+}
+
+// Last known good study tab — the safe "Back to study" target.
+async function lastStudyTabId(st) {
+  const tabs = st.studyTabs.filter((t) => Number.isInteger(t.id));
+  const sorted = [...tabs].sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0));
+  for (const t of sorted) {
+    try {
+      const live = await chrome.tabs.get(t.id);
+      if (live && live.url && !isOwnPage(live.url)) return t.id;
+    } catch { /* dead */ }
   }
   return null;
 }
 
-// One verdict for every URL. Single source of truth — background tabs events,
-// webNavigation events, and content.js all apply the same answer:
-// { verdict: "open" } or { verdict: "blocked", rule: "blocklist"|"youtube", entry? }.
-function decide(url, st) {
-  if (!st.session || !url) return { verdict: "open" };
-  const host = hostOf(url);
-  if (!host) return { verdict: "open" };
-  if (hostBlocked(host, st) && !whitelisted(host, st)) {
-    return { verdict: "blocked", rule: "blocklist", entry: hostBlocked(host, st) };
+async function enforce(tabId, url) {
+  if (!url || isOwnPage(url)) return; // idempotent: never bounce our own pages
+  const now = Date.now();
+  if (bouncing.has(tabId)) return;
+  if (now - (lastBounceAt.get(tabId) || 0) < 1500) return; // debounce races
+  const { state: st } = await Store.loadState();
+  if (!st.session) return;
+  const ctx = await withCtx(st);
+  const v = decideUrl(url, ctx);
+  if (v.verdict !== "blocked") {
+    healStudyTab(st, tabId, url); // reopened lecture heals its identity
+    return;
   }
-  if (ytDistraction(url)) return { verdict: "blocked", rule: "youtube" };
-  return { verdict: "open" };
-}
-
-function whitelisted(host, st) {
-  return st.session && st.session.whitelist.some((w) => host === w || host.endsWith("." + w));
-}
-
-function blockedPage(rule, url) {
-  return chrome.runtime.getURL("blocked.html") + "?from=" + encodeURIComponent(url) + (rule === "youtube" ? "&why=yt" : "");
-}
-
-function isAllowed(url, st) {
-  return decide(url, st).verdict === "open";
-}
-
-// True while the session is in its enforced break (jail + counting paused, blocks stay on).
-function inBreak(st) {
-  if (!st.session) return false;
-  const s = ensurePhases(st.session);
-  return s.phases[s.phaseIndex].type === "break";
-}
-
-async function enforce(tabId, url, st) {
-  st = st || (await getState());
-  const v = decide(url, st);
-  if (v.verdict === "blocked") {
+  bouncing.add(tabId);
+  lastBounceAt.set(tabId, now);
+  try {
     try {
       const tab = await chrome.tabs.get(tabId);
-      if (tab.url && tab.url.startsWith(chrome.runtime.getURL("blocked.html"))) return; // already bounced
-    } catch { /* tab gone */ }
-    await chrome.tabs.update(tabId, { url: blockedPage(v.rule, url) });
-  }
+      if (tab.url && isOwnPage(tab.url)) return;
+    } catch { return; /* tab gone */ }
+    st.blockedCount = (st.blockedCount || 0) + 1;
+    await Store.saveState(st);
+    const back = await lastStudyTabId(st);
+    const dest = ownPage("blocked", `&rule=${v.rule || "blocklist"}&from=${encodeURIComponent(url)}&entry=${encodeURIComponent(v.entry || "")}${back ? `&back=${back}` : ""}`);
+    await chrome.tabs.update(tabId, { url: dest });
+  } catch { /* ignore */ }
+  finally { setTimeout(() => bouncing.delete(tabId), 2000); }
 }
 
-// Covers navigations tabs.onUpdated misses: back/forward restores, prerender
-// swaps, single-page-app history pushes, new-tab commits. Tabs events stay as
-// the fallback; this is the authoritative net (needs "webNavigation" permission).
+// A pinned tab reopened under a new tab id reclaims its entry by canonical key.
+async function healStudyTab(st, tabId, url) {
+  const key = P.studyKey(url);
+  if (!key) return false;
+  const entry = st.studyTabs.find((t) => t.key === key);
+  if (!entry || entry.id === tabId) return false;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    entry.id = tabId;
+    entry.url = url;
+    entry.host = P.hostOf(url);
+    entry.title = tab.title || entry.title;
+    entry.favIcon = tab.favIconUrl || entry.favIcon;
+    entry.lastSeenAt = Date.now();
+    await Store.saveState(st);
+    return true;
+  } catch { return false; }
+}
+
+// Authoritative net: webNavigation sees SPA commits + bfcache + prerender swaps.
 function wireNavigation() {
-  if (!chrome.webNavigation || !chrome.webNavigation.onCommitted) return false;
+  if (!chrome.webNavigation?.onCommitted) return;
   const bounce = (details) => {
-    if (details.frameId !== 0) return; // top frame only
-    (async () => {
-      const st = await getState();
-      const v = decide(details.url, st);
-      if (v.verdict === "blocked") {
-        try {
-          const tab = await chrome.tabs.get(details.tabId);
-          if (tab.url && tab.url.startsWith(chrome.runtime.getURL("blocked.html"))) return;
-        } catch { /* tab gone */ }
-        chrome.tabs.update(details.tabId, { url: blockedPage(v.rule, details.url) }).catch(() => {});
-      }
-    })();
+    if (details.frameId !== 0) return;
+    enforce(details.tabId, details.url).catch(() => {});
   };
   chrome.webNavigation.onCommitted.addListener(bounce);
   chrome.webNavigation.onHistoryStateUpdated.addListener(bounce);
-  return true;
 }
-wireNavigation();
 
+// Fallback for anything webNavigation misses (kept, debounced by enforce()).
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  (async () => {
-    const url = changeInfo.url || tab.url;
-    if (changeInfo.url || changeInfo.status === "complete") enforce(tabId, url);
-    // Search-spiral tripwire: log YouTube searches (navigation events only, no double-count).
-    if (!changeInfo.url) return;
-    const query = ytSearchQuery(changeInfo.url);
-    if (!query) return;
-    const st = await getState();
-    if (!st.session) return;
-    const s = ensurePhases(st.session);
-    s.searchLog = (s.searchLog || []).filter((e) => Date.now() - e.at < SEARCH_WINDOW_MS);
-    s.searchLog.push({ at: Date.now(), query });
-    let nudged = false;
-    if (s.searchLog.length >= SEARCH_THRESHOLD && Date.now() - (s.lastSearchNudgeAt || 0) > SEARCH_NUDGE_COOLDOWN_MS) {
-      s.lastSearchNudgeAt = Date.now();
-      nudged = true;
-    }
-    await chrome.storage.local.set({ session: s });
-    if (nudged) {
-      chrome.notifications.create({
-        type: "basic", iconUrl: "icon128.png",
-        title: "FocusLock — still studying?",
-        message: `${s.searchLog.length} YouTube searches in 5 min (“${query}”). If the lecture sent you here, fine — otherwise, back to the video.`,
-      });
-    }
-  })();
+  const url = changeInfo.url || tab.url;
+  if (changeInfo.url || changeInfo.status === "complete") {
+    enforce(tabId, url).catch(() => {});
+    if (changeInfo.url) logSearch(changeInfo.url).catch(() => {});
+  }
 });
 
-// Tab-Switch Jail: every switch during a FOCUS phase bounces back with escalating delay.
-// Switches TO a pinned study tab are free (studying from 2 tabs is normal).
-// During BREAK phases there is no jail and no counting — but blocklist + YT guard still apply.
-let jailUntil = 0;
+// Search-spiral tripwire (navigation events only — no double count).
+async function logSearch(url) {
+  const query = P.ytSearchQuery(url);
+  if (!query) return;
+  const { state: st } = await Store.loadState();
+  if (!st.session) return;
+  const s = st.session;
+  s.searchLog = (s.searchLog || []).filter((e) => Date.now() - e.at < SEARCH_WINDOW_MS);
+  s.searchLog.push({ at: Date.now(), query });
+  let nudged = false;
+  if (s.searchLog.length >= SEARCH_THRESHOLD &&
+      Date.now() - (s.lastSearchNudgeAt || 0) > SEARCH_NUDGE_COOLDOWN_MS) {
+    s.lastSearchNudgeAt = Date.now();
+    nudged = true;
+  }
+  await Store.saveState(st);
+  if (nudged) {
+    chrome.notifications.create({
+      type: "basic", iconUrl: "icon128.png",
+      title: "FocusLock — still studying?",
+      message: `${s.searchLog.length} YouTube searches in 5 min ("${query}"). Lecture-driven is fine; spirals aren't.`,
+    });
+  }
+}
+
+/* ---------- tab-switch jail (persisted, SW-death-safe) ---------- */
+function jailMsFor(n) {
+  return Math.min(3000 + Math.floor(n / 5) * 2000, 20000);
+}
+
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
-  const st = await getState();
+  const { state: st } = await Store.loadState();
   if (!st.session) return;
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   const url = tab ? tab.url : null;
-  if (url && decide(url, st).verdict === "blocked") { enforce(tabId, url, st); return; }
-  if (inBreak(st)) return; // break: free movement, blocks already handled above
-  const pinnedIds = studyList(st.session).filter((t) => !t.closed).map((t) => t.id);
-  if (pinnedIds.includes(tabId)) return; // study tab: no count, no jail
-  const n = (st.switches || 0) + 1;
-  await chrome.storage.local.set({ switches: n });
-  if (Date.now() < jailUntil) return;
-  // Jail: 3s + 2s per 5 switches, capped 20s. Feels annoying, not broken.
-  const jailMs = Math.min(3000 + Math.floor(n / 5) * 2000, 20000);
-  jailUntil = Date.now() + jailMs;
-  const fromHost = hostOf(url || "");
-  chrome.tabs.update(tabId, {
-    url: chrome.runtime.getURL("jail.html") + `?n=${n}&wait=${Math.round(jailMs / 1000)}&from=` + encodeURIComponent(fromHost),
-  });
+  if (!url || isOwnPage(url)) return;
+  const ctx = await withCtx(st);
+  if (decideUrl(url, ctx).verdict === "blocked") { enforce(tabId, url); return; }
+  if (inBreak(st)) return;
+  // Free: pinned study tab (by live id OR healed canonical key).
+  const key = P.studyKey(url);
+  const pinned = st.studyTabs.find((t) => t.id === tabId || (key && t.key === key));
+  if (pinned) {
+    pinned.id = tabId;
+    pinned.lastSeenAt = Date.now();
+    await Store.saveState(st);
+    return;
+  }
+  if (!url.startsWith("http")) return; // extension/settings/internal pages are free
+  st.switchCount = (st.switchCount || 0) + 1;
+  const n = st.switchCount;
+  st.switches.push({ at: Date.now(), fromHost: P.hostOf(url), rule: "switch", jailed: true });
+  const jailMs = jailMsFor(n);
+  st.jail = { until: Date.now() + jailMs, n }; // persisted — survives SW death
+  await Store.saveState(st);
+  const back = await lastStudyTabId(st);
+  const dest = ownPage("jail", `&n=${n}&until=${st.jail.until}&from=${encodeURIComponent(P.hostOf(url) || "a new tab")}&curl=${encodeURIComponent(url)}${back ? `&back=${back}` : ""}`);
+  chrome.tabs.update(tabId, { url: dest }).catch(() => {});
 });
+
+/* ---------- messages ---------- */
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  (async () => {
+    const { state: st } = await Store.loadState();
+
+    if (msg.type === "START_SESSION") {
+      const now = Date.now();
+      const minutes = Math.min(240, Math.max(5, msg.minutes || 25));
+      const whitelist = (msg.whitelist || []).map((h) => String(h).trim().toLowerCase()).filter(Boolean);
+      const ctx = {
+        sessionActive: true, blocklist: await Store.getBlocklist(), whitelist,
+        passUntil: 0, passHost: "",
+      };
+      // Validate EVERYTHING against the verdict: current tab, tray, extras.
+      const candidates = [];
+      for (const t of [...(msg.studyTabs || []), ...st.pendingPins]) {
+        const e = Store.normTab(t);
+        if (e && e.url && decideUrl(e.url, ctx).verdict === "open") candidates.push(e);
+      }
+      const seen = new Set();
+      const studyTabs = candidates.filter((t) => {
+        if (seen.has(t.key)) return false;
+        seen.add(t.key);
+        return true;
+      }).slice(0, 25);
+      const phases = buildPhases(minutes);
+      st.session = {
+        id: "s-" + now + "-" + Math.floor(Math.random() * 1e6),
+        goal: String(msg.goal || "").slice(0, 120),
+        startedAt: now, endsAt: now + minutes * 60 * 1000, plannedMinutes: minutes,
+        phases, phaseIndex: 0, phaseStartedAt: now,
+        phaseEndsAt: now + phases[0].minutes * 60 * 1000,
+        whitelist, breakTabId: null, lastSearchNudgeAt: 0,
+        searchLog: [], breakSkipped: false,
+      };
+      st.studyTabs = studyTabs;
+      st.pendingPins = [];
+      st.switchCount = 0;
+      st.switches = [];
+      st.urges = [];
+      st.emergencyPasses = st.emergencyPasses || [];
+      st.pass = null;
+      st.blockedCount = 0;
+      st.jail = null;
+      await Store.saveState(st);
+      await chrome.alarms.clearAll();
+      chrome.alarms.create("phase", { when: st.session.phaseEndsAt });
+      chrome.alarms.create("focusEnd", { when: st.session.endsAt });
+      chrome.alarms.create("tick", { periodInMinutes: 1 });
+      updateBadge(st);
+      sendResponse({ ok: true, pinned: studyTabs.length, id: st.session.id });
+      return;
+    }
+
+    if (msg.type === "PIN_STUDY_TAB") {
+      const entry = Store.normTab({
+        id: msg.tabId, title: msg.title, url: msg.url,
+        host: msg.host, favIcon: msg.favIcon,
+      });
+      if (!entry || !entry.url || isOwnPage(entry.url)) {
+        sendResponse({ ok: false, reason: "blocked-page" }); return;
+      }
+      if ((!entry.title || !entry.host) && Number.isInteger(entry.id)) {
+        try {
+          const t = await chrome.tabs.get(entry.id);
+          entry.title = entry.title || t.title || "";
+          entry.url = entry.url || t.url || "";
+          entry.host = P.hostOf(entry.url);
+          entry.favIcon = entry.favIcon || t.favIconUrl || "";
+          entry.key = P.studyKey(entry.url);
+        } catch { /* tab gone */ }
+      }
+      // Blocked pages can NEVER be pinned — check against live verdict.
+      const ctx = st.session
+        ? await withCtx(st)
+        : { sessionActive: true, blocklist: await Store.getBlocklist(), whitelist: [], passUntil: 0, passHost: "" };
+      const v = decideUrl(entry.url, ctx);
+      if (v.verdict === "blocked") {
+        sendResponse({ ok: false, reason: "blocked-site", host: entry.host }); return;
+      }
+      if (st.session) {
+        if (!st.studyTabs.some((t) => t.key === entry.key)) {
+          st.studyTabs.push({ ...entry, lastSeenAt: Date.now() });
+          await Store.saveState(st);
+        }
+        sendResponse({ ok: true, pending: false });
+      } else {
+        if (!st.pendingPins.some((t) => t.key === entry.key)) {
+          st.pendingPins.push({ ...entry, lastSeenAt: Date.now() });
+          await Store.saveState(st);
+        }
+        sendResponse({ ok: true, pending: true });
+      }
+      return;
+    }
+
+    if (msg.type === "UNPIN_STUDY_TAB") {
+      const key = msg.key || "";
+      const id = msg.tabId;
+      const drop = (t) => (key ? t.key !== key : t.id !== id);
+      st.studyTabs = st.studyTabs.filter(drop);
+      st.pendingPins = st.pendingPins.filter(drop);
+      await Store.saveState(st);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg.type === "END_SESSION") {
+      if (st.session) {
+        const r = await completeSession(st.session.id, false);
+        sendResponse(r);
+      } else sendResponse({ ok: false, reason: "no-session" });
+      return;
+    }
+
+    if (msg.type === "SKIP_BREAK") {
+      if (!st.session || !inBreak(st)) { sendResponse({ ok: false }); return; }
+      st.session.breakSkipped = true;
+      await Store.saveState(st);
+      await advancePhase();
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg.type === "PARK_URGE") {
+      const text = String(msg.text || "").slice(0, 200);
+      if (!text) { sendResponse({ ok: false }); return; }
+      st.urges.push({ at: Date.now(), text, site: P.siteOf(text) });
+      await Store.saveState(st);
+      sendResponse({ ok: true, count: st.urges.length });
+      return;
+    }
+
+    if (msg.type === "REQUEST_PASS") {
+      if (!st.session || st.settings.emergencyPass === false) {
+        sendResponse({ ok: false }); return;
+      }
+      const host = P.hostOf(msg.url || "");
+      const reason = String(msg.reason || "").slice(0, 140);
+      if (!host || !reason) { sendResponse({ ok: false }); return; }
+      const until = Date.now() + PASS_MS;
+      st.pass = { host, until };
+      st.emergencyPasses.push({ at: Date.now(), host, reason, until });
+      await Store.saveState(st);
+      sendResponse({ ok: true, until });
+      return;
+    }
+
+    if (msg.type === "GET_STATUS") {
+      if (st.session) {
+        st.session.searchLog = (st.session.searchLog || [])
+          .filter((e) => Date.now() - e.at < SEARCH_WINDOW_MS);
+        for (const p of st.studyTabs) {
+          if (!Number.isInteger(p.id)) continue;
+          try {
+            const t = await chrome.tabs.get(p.id);
+            if (t.url && P.studyKey(t.url) === p.key) {
+              p.title = t.title || p.title;
+              p.favIcon = t.favIconUrl || p.favIcon;
+              p.url = t.url;
+              p.lastSeenAt = Date.now();
+            }
+          } catch { /* closed — key survives for healing */ }
+        }
+        await Store.saveState(st);
+      }
+      const liveIds = new Set();
+      try {
+        const all = await chrome.tabs.query({});
+        for (const t of all) liveIds.add(t.id);
+      } catch { /* ignore */ }
+      const tabs = st.studyTabs.map((t) => ({
+        ...t, closed: Number.isInteger(t.id) ? !liveIds.has(t.id) : true,
+      }));
+      sendResponse({
+        session: st.session, studyTabs: tabs,
+        pendingPins: st.pendingPins,
+        switches: st.switchCount || 0, switchLog: (st.switches || []).slice(-10),
+        urges: st.urges.slice(-10), urgeCount: st.urges.length,
+        blocked: st.blockedCount || 0,
+        history: st.history.slice(-30),
+        settings: st.settings,
+        jail: st.jail || null,
+        inBreak: inBreak(st),
+      });
+      return;
+    }
+
+    if (msg.type === "SAVE_SETTINGS") {
+      st.settings = Object.assign(st.settings || {}, msg.settings || {});
+      await Store.saveState(st);
+      sendResponse({ ok: true, settings: st.settings });
+      return;
+    }
+
+    if (msg.type === "SET_BLOCKLIST") {
+      const defs = new Set(P.DEFAULT_BLOCKLIST);
+      const customs = [...new Set((msg.customs || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean))]
+        .filter((d) => !defs.has(d) && /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d));
+      const removed = [...defs].filter((d) => !(msg.defaults || []).includes(d));
+      await chrome.storage.local.set({ customBlocklist: customs, removedDefaults: removed });
+      sendResponse({ ok: true });
+      return;
+    }
+
+    if (msg.type === "GET_BLOCKLIST") {
+      const got = await chrome.storage.local.get(["customBlocklist", "removedDefaults"]);
+      sendResponse({
+        defaults: P.DEFAULT_BLOCKLIST.filter((d) => !(got.removedDefaults || []).includes(d)),
+        customs: got.customBlocklist || [],
+        removed: got.removedDefaults || [],
+        allDefaults: P.DEFAULT_BLOCKLIST,
+      });
+      return;
+    }
+
+    if (msg.type === "CLEAR_HISTORY") {
+      st.history = [];
+      await Store.saveState(st);
+      sendResponse({ ok: true });
+      return;
+    }
+
+    sendResponse({ ok: false, reason: "unknown" });
+  })();
+  return true;
+});
+
+/* ---------- alarms ---------- */
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === "tick") { updateBadge(); return; }
+  const { state: st } = await Store.loadState();
+  if (!st.session) { await chrome.alarms.clearAll(); return; }
+  if (alarm.name === "phase") { advancePhase(); return; }
+  if (alarm.name === "focusEnd") { completeSession(st.session.id, true); return; }
+});
+
+/* ---------- recovery on SW startup ---------- */
+(async function recover() {
+  wireNavigation();
+  try {
+    const { state: st } = await Store.loadState();
+    if (!st.session) return;
+    const now = Date.now();
+    if (st.session.endsAt <= now) {
+      await completeSession(st.session.id, true);
+      return;
+    }
+    if (st.session.phaseEndsAt <= now) {
+      await advancePhase();
+      const { state: st2 } = await Store.loadState();
+      updateBadge(st2);
+      if (st2.session) {
+        await chrome.alarms.clearAll();
+        chrome.alarms.create("phase", { when: st2.session.phaseEndsAt });
+        chrome.alarms.create("focusEnd", { when: st2.session.endsAt });
+        chrome.alarms.create("tick", { periodInMinutes: 1 });
+      }
+      return;
+    }
+    await chrome.alarms.clearAll();
+    chrome.alarms.create("phase", { when: st.session.phaseEndsAt });
+    chrome.alarms.create("focusEnd", { when: st.session.endsAt });
+    chrome.alarms.create("tick", { periodInMinutes: 1 });
+    updateBadge(st);
+  } catch { /* fail safe: blocker defaults to open when state is unreadable */ }
+})();

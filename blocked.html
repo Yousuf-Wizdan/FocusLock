@@ -1,63 +1,121 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8">
-<link rel="stylesheet" href="fonts/fonts.css"><title>Blocked — back to study</title>
+<link rel="stylesheet" href="fonts/fonts.css"><title>Blocked — this page is outside your focus session</title>
 <style>
-:root { color-scheme: dark; }
-body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #14120F; color: #EDE8DE; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
-.card { max-width: 420px; width: 100%; background: #1D1A16; border: 1px solid #2E2A23; border-radius: 8px; padding: 24px; }
-.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #E0807D; margin: 0 0 6px; }
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif; background: #F5F1E8; color: #1C1917; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; font-size: 14px; line-height: 1.6; }
+@media (prefers-color-scheme: dark) {
+  body { background: #14120F; color: #EDE8DE; }
+  .card { background: #1D1A16 !important; border-color: #2E2A23 !important; }
+  .site, .why { background: #14120F !important; border-color: #2E2A23 !important; }
+  p, .muted { color: #A39E93 !important; }
+  #park, #passBtn { color: #EDE8DE !important; border-color: #2E2A23 !important; }
+  input, textarea { background: #14120F !important; border-color: #2E2A23 !important; color: #EDE8DE !important; }
+  small { color: #5A544A !important; }
+}
+.card { max-width: 440px; width: 100%; background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 8px; padding: 24px; }
+.kicker { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #B45309; margin: 0 0 6px; }
 h1 { font-size: 20px; margin: 0 0 6px; letter-spacing: -0.01em; }
-p { color: #A39E93; margin: 0 0 14px; font-size: 13px; }
-.site { display: flex; align-items: center; gap: 9px; background: #14120F; border: 1px solid #2E2A23; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 16px; }
-.site img { width: 18px; height: 18px; border-radius: 3px; }
+p { color: #57534E; margin: 0 0 14px; font-size: 13px; }
+.site { display: flex; align-items: center; gap: 9px; background: #F5F1E8; border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 10px; }
 .site b { font-weight: 650; }
+.why { background: #F5F1E8; border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 16px; }
 .row { display: flex; gap: 8px; }
-button, a.btn { flex: 1; text-align: center; text-decoration: none; padding: 10px; border-radius: 6px; font-weight: 650; font-size: 13.5px; cursor: pointer; font-family: inherit; }
-#back { background: #E2A63B; color: #14120F; border: 1px solid #E2A63B; }
-#back:hover { background: #EDB654; }
-#park { background: transparent; color: #EDE8DE; border: 1px solid #2E2A23; }
-#park:hover { border-color: #E2A63B; }
-button:focus-visible, a:focus-visible { outline: 2px solid #E2A63B; outline-offset: 2px; }
-small { color: #5A544A; display: block; margin-top: 12px; word-break: break-all; font-size: 11px; }
+button { flex: 1; padding: 10px; border-radius: 6px; font-weight: 650; font-size: 13.5px; cursor: pointer; font-family: inherit; }
+#back { background: #1C1917; color: #FAF7F0; border: 1px solid #1C1917; }
+button:focus-visible, summary:focus-visible { outline: 2px solid #B45309; outline-offset: 2px; }
+#park { background: transparent; border: 1px solid #D6CCB2; }
+details { margin-top: 10px; font-size: 12.5px; }
+details summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+input, textarea { width: 100%; border: 1px solid #D6CCB2; border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 12.5px; margin-top: 6px; }
+#passGo { margin-top: 8px; width: 100%; background: transparent; border: 1px solid #D6CCB2; }
+.hint { font-size: 12px; color: #57534E; margin-top: 8px; }
+small { color: #8A8478; display: block; margin-top: 12px; word-break: break-all; font-size: 11px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style></head>
 <body>
-<div class="card">
-  <p class="kicker" id="kicker">Blocked during focus</p>
-  <h1 id="title">Not now. Study first.</h1>
-  <p id="desc">This site waits until your session ends. If it's an urge, park it — you'll see it after, with the site named.</p>
-  <div class="site"><img id="fav" alt="" style="display:none"><span>Blocked: <b id="host">…</b></span></div>
+<main class="card" aria-labelledby="title">
+  <p class="kicker" id="kicker">Outside your focus session</p>
+  <h1 id="title">This page can wait.</h1>
+  <p id="desc">Your study tabs are still open. This site stays paused until your session ends.</p>
+  <div class="site"><span>Paused: <b id="host">…</b></span></div>
+  <div class="why" id="why"></div>
   <div class="row">
     <button id="back">Back to study</button>
-    <a class="btn" id="park" href="#">Park this urge</a>
+    <button id="park">Park this urge</button>
   </div>
+  <details id="passBox">
+    <summary>Need 2 minutes here? Take an emergency pass</summary>
+    <label for="passReason">Why do you need it? (logged in your session)</label>
+    <input id="passReason" type="text" maxlength="140" placeholder="e.g. class link was sent on Instagram">
+    <button id="passGo">Open for 2 minutes</button>
+    <div class="hint">One site, 2 minutes, then the guard returns. The reason is saved with your session.</div>
+  </details>
   <small id="from"></small>
-</div>
+</main>
 <script>
-const q = new URLSearchParams(location.search);
-const raw = q.get("from") || "";
-let host = "";
-try { host = new URL(raw).hostname.replace(/^www\./, ""); } catch { host = raw; }
-document.getElementById("host").textContent = host || "this page";
-document.getElementById("from").textContent = raw;
-if (host) {
-  const img = document.getElementById("fav");
-  img.src = "https://www.google.com/s2/favicons?domain=" + encodeURIComponent(host) + "&sz=64";
-  img.onload = () => img.style.display = "";
-  img.onerror = () => img.style.display = "none";
-}
-if (q.get("why") === "yt") {
-  document.getElementById("kicker").textContent = "YouTube study guard";
-  document.getElementById("title").textContent = "Shorts can wait. The lecture can't.";
-  document.getElementById("desc").textContent = "Shorts, home, trending and explore stay blocked in sessions. Watch, search, playlists and channels stay open.";
-}
-document.getElementById("back").onclick = () => history.back();
-document.getElementById("park").onclick = async (e) => {
-  e.preventDefault();
-  const text = host ? ("check " + host) : raw;
-  try { await chrome.runtime.sendMessage({ type: "PARK_URGE", text }); } catch { /* worker asleep */ }
-  history.back();
-};
+(function () {
+  "use strict";
+  const q = new URLSearchParams(location.search);
+  const raw = q.get("from") || "";
+  const rule = q.get("rule") || (q.get("why") === "yt" ? "youtube" : "blocklist");
+  const backId = parseInt(q.get("back") || "", 10);
+  let host = "";
+  try { host = new URL(raw).hostname.replace(/^www\./, ""); } catch { host = raw; }
+  document.getElementById("host").textContent = host || "this page";
+  document.getElementById("from").textContent = raw;
+
+  const why = document.getElementById("why");
+  if (rule === "youtube") {
+    document.getElementById("kicker").textContent = "YouTube study guard";
+    document.getElementById("title").textContent = "Shorts can wait. The lecture can't.";
+    why.textContent = "Shorts, home, trending and explore stay paused during sessions. Lectures, search, playlists, live streams and channels stay open.";
+  } else if (q.get("entry")) {
+    why.textContent = "Paused by your blocklist (" + q.get("entry") + "). It reopens when the session ends.";
+  } else {
+    why.textContent = "You left a study tab during a focus block, so this page is on hold for a few seconds.";
+  }
+
+  async function backToStudy() {
+    if (Number.isInteger(backId)) {
+      try {
+        await chrome.tabs.update(backId, { active: true });
+        window.close();
+        return;
+      } catch { /* fall through */ }
+    }
+    // No known study tab: open the popup's world by focusing any study tab,
+    // otherwise just go back in history.
+    try {
+      const st = await chrome.runtime.sendMessage({ type: "GET_STATUS" });
+      const tabs = (st && st.studyTabs) || [];
+      for (const t of tabs) {
+        try { await chrome.tabs.update(t.id, { active: true }); window.close(); return; }
+        catch { /* try next */ }
+      }
+    } catch { /* ignore */ }
+    history.back();
+  }
+  document.getElementById("back").onclick = backToStudy;
+  document.getElementById("park").onclick = async () => {
+    const text = host ? ("check " + host) : raw;
+    try { await chrome.runtime.sendMessage({ type: "PARK_URGE", text }); } catch { /* worker asleep */ }
+    backToStudy();
+  };
+  document.getElementById("passGo").onclick = async () => {
+    const reason = document.getElementById("passReason").value.trim();
+    if (!reason) {
+      document.getElementById("passReason").focus();
+      return;
+    }
+    try {
+      const res = await chrome.runtime.sendMessage({ type: "REQUEST_PASS", url: raw, reason });
+      if (res && res.ok) location.replace(raw);
+    } catch { /* ignore */ }
+  };
+})();
 </script>
 </body>
 </html>

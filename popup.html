@@ -1,118 +1,119 @@
 <!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8">
-<link rel="stylesheet" href="fonts/fonts.css"><style>
-/* FocusLock popup — dark SaaS. Warm charcoal, one amber accent, quiet grays.
-   Idle shows: timer-ready, presets, start. Everything else hides until it matters. */
-:root { color-scheme: dark; }
+<link rel="stylesheet" href="fonts/fonts.css">
+<style>
+:root { color-scheme: light dark; }
 * { box-sizing: border-box; }
-body {
-  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  width: 320px; padding: 0; margin: 0;
-  background: #14120F; color: #EDE8DE; font-size: 12.5px; line-height: 1.5;
+body { font-family: "Inter", system-ui, sans-serif; width: 340px; margin: 0; padding: 0; font-size: 13px; line-height: 1.5; background: #F5F1E8; color: #1C1917; }
+@media (prefers-color-scheme: dark) {
+  body { background: #14120F; color: #EDE8DE; }
+  header { border-color: #26221C !important; }
+  .timer, .studytab, details, .urge { background: #1D1A16 !important; border-color: #2E2A23 !important; }
+  .preset, #pin, #pinIdle, #stop, #snap { background: transparent !important; color: #EDE8DE !important; border-color: #2E2A23 !important; }
+  input[type=text], input[type=number] { background: #14120F !important; border-color: #2E2A23 !important; color: #EDE8DE !important; }
+  .muted, .sec-label, label, .hint, #eta, #sTimeK { color: #A39E93 !important; }
+  .empty { border-color: #3A342A !important; color: #A39E93 !important; }
+  .jday { background: #14120F !important; border-color: #2E2A23 !important; }
 }
-header { display: flex; align-items: center; gap: 8px; padding: 12px 14px 10px; border-bottom: 1px solid #26221C; }
-.brand { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; display: flex; align-items: center; gap: 8px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: #5A544A; flex: none; }
-.dot.live { background: #E2A63B; }
-.dot.rest { background: #C97B4A; }
-#streak { margin-left: auto; font-size: 11px; font-weight: 600; color: #E2A63B; background: #221B10; border: 1px solid #4A3A1E; border-radius: 6px; padding: 2px 8px; }
+header { display: flex; align-items: center; gap: 8px; padding: 11px 14px 9px; border-bottom: 1px solid #E3DCC8; }
+.brand { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: #B8AE99; flex: none; }
+.dot.live { background: #1C1917; }
+.dot.rest { background: #B45309; }
+@media (prefers-color-scheme: dark) { .dot.live { background: #E2A63B; } }
+#streak { margin-left: auto; font-size: 11px; font-weight: 600; border: 1px solid #D6CCB2; border-radius: 6px; padding: 2px 8px; }
+#gear { background: none; border: none; cursor: pointer; font-size: 14px; padding: 2px 4px; }
 main { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
-.timer { background: #1D1A16; border: 1px solid #2E2A23; border-radius: 8px; padding: 14px 14px 12px; }
+.timer { background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 8px; padding: 14px; }
 .phase-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-#phaseName { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #E2A63B; }
-#phaseName.rest { color: #C97B4A; }
-#eta { font-size: 11px; color: #A39E93; }
+#phaseName { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+#eta { font-size: 11px; color: #57534E; }
 .clock { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
-#sTime { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.1; font-variant-numeric: tabular-nums; }
-#sTimeK { font-size: 11px; color: #A39E93; }
-.rule { height: 2px; background: #2E2A23; margin-top: 10px; border-radius: 1px; }
-.rule i { display: block; height: 100%; width: 0%; background: #E2A63B; border-radius: 1px; transition: width .5s linear; }
-.rule.rest i { background: #C97B4A; }
-.ledger { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: #A39E93; margin-top: 8px; font-variant-numeric: tabular-nums; }
-.ledger b { color: #EDE8DE; }
-#phaseLine { margin-top: 10px; }
-.phase { font-size: 12px; padding: 8px 10px; border: 1px solid #2E2A23; border-left: 3px solid #E2A63B; background: #1A1713; border-radius: 0 6px 6px 0; }
-.phase.break { border-left-color: #C97B4A; }
-.phase .next { display: block; font-size: 11px; color: #A39E93; margin-top: 2px; }
-#searchNote { display: none; margin-top: 8px; font-size: 11.5px; color: #E8C48A; background: #221B10; border: 1px solid #4A3A1E; border-left: 3px solid #E2A63B; border-radius: 0 6px 6px 0; padding: 7px 10px; }
-.sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #A39E93; margin: 0 0 6px; font-weight: 700; }
+#sTime { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; font-family: "Plex Mono", ui-monospace, Menlo, monospace; line-height: 1.1; font-variant-numeric: tabular-nums; }
+#sTimeK { font-size: 11px; color: #57534E; }
+#goalLine { font-size: 12.5px; font-weight: 600; margin-top: 4px; }
+.rule { height: 2px; background: #E3DCC8; margin-top: 10px; border-radius: 1px; }
+.rule i { display: block; height: 100%; width: 0%; background: #1C1917; border-radius: 1px; }
+@media (prefers-color-scheme: dark) { .rule { background: #2E2A23; } .rule i { background: #E2A63B; } }
+.ledger { display: flex; gap: 6px; font-size: 11px; color: #57534E; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #57534E; margin: 0 0 6px; font-weight: 700; }
 .presets { display: flex; gap: 6px; }
-.preset { flex: 1; padding: 8px 4px; border-radius: 6px; border: 1px solid #2E2A23; background: #1D1A16; color: #EDE8DE; font-weight: 650; font-size: 12px; cursor: pointer; font-family: inherit; }
-.preset:hover { border-color: #E2A63B; }
-.preset:focus-visible { outline: 2px solid #E2A63B; outline-offset: 2px; }
-.preset small { display: block; font-weight: 400; font-size: 10px; color: #A39E93; }
+.preset { flex: 1; padding: 8px 4px; border-radius: 6px; border: 1px solid #D6CCB2; background: #FFFFFF; font-weight: 650; font-size: 12px; cursor: pointer; font-family: inherit; color: inherit; }
+.preset small { display: block; font-weight: 400; font-size: 10px; opacity: 0.7; }
 .row { display: flex; gap: 8px; margin-top: 8px; }
 .btn { flex: 1; padding: 9px 10px; border-radius: 6px; font-weight: 650; cursor: pointer; font-size: 13px; border: 1px solid transparent; font-family: inherit; }
-.btn:active { transform: translateY(1px); }
-.btn:focus-visible { outline: 2px solid #E2A63B; outline-offset: 2px; }
-#start { background: #E2A63B; color: #14120F; }
-#start:hover { background: #EDB654; }
-#pin, #pinIdle { background: transparent; color: #EDE8DE; border-color: #2E2A23; }
-#pin:hover, #pinIdle:hover { border-color: #E2A63B; }
-#stop { background: transparent; color: #A39E93; border-color: #2E2A23; flex: 0 0 76px; }
-#stop:hover { color: #EDE8DE; border-color: #5A544A; }
-#park { background: #E2A63B; color: #14120F; flex: 0 0 76px; }
-#park:hover { background: #EDB654; }
-.studytab { display: flex; align-items: center; gap: 9px; background: #1D1A16; border: 1px solid #2E2A23; border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; }
+.btn:focus-visible, .preset:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #B45309; outline-offset: 2px; }
+#start, #park { background: #1C1917; color: #FAF7F0; }
+@media (prefers-color-scheme: dark) { #start, #park { background: #E2A63B; color: #14120F; } }
+#pin, #pinIdle { background: transparent; border-color: #D6CCB2; color: inherit; }
+#stop { background: transparent; border-color: #D6CCB2; color: inherit; flex: 0 0 76px; }
+#park { flex: 0 0 76px; }
+.studytab { display: flex; align-items: center; gap: 9px; background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 6px; padding: 7px 9px; margin-bottom: 6px; }
 .studytab img { width: 16px; height: 16px; border-radius: 3px; flex: none; }
 .studytab .t { flex: 1; min-width: 0; }
 .studytab .t b { display: block; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.studytab .t span { font-size: 11px; color: #A39E93; }
-.studytab .t span.closed { color: #E0807D; }
-.studytab button { flex: none; background: none; border: 1px solid transparent; border-radius: 4px; color: #A39E93; cursor: pointer; font-size: 13px; padding: 2px 6px; line-height: 1; }
-.studytab button:hover { color: #E0807D; border-color: #2E2A23; }
-.studytab button:focus-visible { outline: 2px solid #E2A63B; outline-offset: 1px; }
-.empty { font-size: 12px; color: #A39E93; border: 1px dashed #3A342A; border-radius: 6px; padding: 9px 10px; }
-label { font-size: 11px; color: #A39E93; display: block; margin: 0 0 4px; font-weight: 600; }
-input[type=number], input[type=text] { width: 100%; height: 32px; background: #14120F; border: 1px solid #2E2A23; color: #EDE8DE; border-radius: 6px; padding: 6px 9px; font-size: 12.5px; font-family: inherit; }
-input:focus { outline: none; border-color: #E2A63B; }
-input::placeholder { color: #5A544A; }
-.urge { display: flex; align-items: flex-start; gap: 8px; background: #1D1A16; border: 1px solid #2E2A23; border-radius: 6px; padding: 7px 9px; margin-top: 5px; font-size: 12px; }
-.urge .ago { color: #A39E93; font-size: 10.5px; white-space: nowrap; margin-left: auto; flex: none; font-variant-numeric: tabular-nums; }
-.urge .site { color: #E2A63B; font-size: 11px; }
-.urge .col { min-width: 0; }
-details { border: 1px solid #2E2A23; border-radius: 6px; background: #1D1A16; }
-details summary { font-size: 12px; font-weight: 600; color: #A39E93; cursor: pointer; padding: 8px 10px; list-style: none; }
+.studytab .t span { font-size: 11px; opacity: 0.75; }
+.studytab button { flex: none; background: none; border: 1px solid transparent; border-radius: 4px; cursor: pointer; font-size: 14px; padding: 2px 6px; color: inherit; }
+.empty { font-size: 12px; border: 1px dashed #C9BFA6; border-radius: 6px; padding: 9px 10px; opacity: 0.85; }
+label { font-size: 11px; display: block; margin: 0 0 4px; font-weight: 600; }
+input[type=number], input[type=text] { width: 100%; height: 32px; border: 1px solid #D6CCB2; border-radius: 6px; padding: 6px 9px; font-size: 12.5px; font-family: inherit; background: #FFFFFF; color: inherit; }
+input::placeholder { opacity: 0.5; }
+.urge { display: flex; gap: 8px; background: #FFFFFF; border: 1px solid #E3DCC8; border-radius: 6px; padding: 7px 9px; margin-top: 5px; font-size: 12px; }
+.urge .ago { opacity: 0.65; font-size: 10.5px; white-space: nowrap; margin-left: auto; flex: none; }
+details { border: 1px solid #E3DCC8; border-radius: 6px; background: #FFFFFF; }
+details summary { font-size: 12px; font-weight: 600; cursor: pointer; padding: 8px 10px; list-style: none; }
 details summary::-webkit-details-marker { display: none; }
-details summary::before { content: "+ "; color: #E2A63B; }
+details summary::before { content: "+ "; }
 details[open] summary::before { content: "– "; }
 details .body { padding: 0 10px 10px; }
-.hint { font-size: 11px; color: #A39E93; margin-top: 6px; line-height: 1.6; }
+.hint, .muted { font-size: 11px; opacity: 0.75; margin-top: 6px; line-height: 1.6; }
+#notice { display: none; font-size: 12px; border-radius: 6px; padding: 8px 10px; border: 1px solid #D6CCB2; }
+#notice.show { display: block; }
+#phaseLine { margin-top: 10px; }
+.phase { font-size: 12px; padding: 8px 10px; border: 1px solid #E3DCC8; border-left: 3px solid #1C1917; border-radius: 0 6px 6px 0; }
+.phase .next { display: block; font-size: 11px; opacity: 0.75; margin-top: 2px; }
+#searchNote { display: none; margin-top: 8px; font-size: 11.5px; border: 1px solid #D6CCB2; border-left: 3px solid #B45309; border-radius: 0 6px 6px 0; padding: 7px 10px; }
 #journal { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-.jday { background: #14120F; border: 1px solid #2E2A23; border-radius: 6px; padding: 8px 10px; }
-.jday .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; }
-.jday .top b { font-weight: 650; }
-.jday .top .n { color: #A39E93; font-size: 11px; font-variant-numeric: tabular-nums; }
+.jday { border: 1px solid #E3DCC8; border-radius: 6px; padding: 8px 10px; }
+.jday .top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
 .jday .bars { display: flex; gap: 3px; margin-top: 6px; }
-.jday .bars i { height: 16px; flex: 1; background: #2E2A23; border-radius: 2px; min-width: 0; }
-.jday .bars i.done { background: #E2A63B; }
-.jday .bars i.quit { background: #3A342A; }
-.jday .topsites { font-size: 11px; color: #A39E93; margin-top: 5px; }
-.jday .topsites b { color: #EDE8DE; font-weight: 600; }
+.jday .bars i { height: 12px; flex: 1; background: #E3DCC8; border-radius: 2px; min-width: 0; }
+.jday .bars i.done { background: #1C1917; }
+@media (prefers-color-scheme: dark) { .jday .bars i { background: #2E2A23; } .jday .bars i.done { background: #E2A63B; } }
+#debrief { display: none; border: 1px solid #1C1917; border-radius: 8px; padding: 12px; }
+@media (prefers-color-scheme: dark) { #debrief { border-color: #E2A63B; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 </style></head>
 <body>
 <header>
-  <div class="brand"><span id="dot" class="dot"></span>FocusLock</div>
+  <div class="brand"><span id="dot" class="dot" aria-hidden="true"></span>FocusLock</div>
   <span id="streak" style="display:none"></span>
+  <button id="gear" title="Settings" aria-label="Open settings">⚙</button>
 </header>
 <main>
-  <section class="timer" aria-label="Session timer">
+  <div id="notice" role="status"></div>
+
+  <section class="timer" aria-label="Session timer" aria-live="polite">
     <div class="phase-row"><span id="phaseName">Ready</span><span id="eta"></span></div>
     <div class="clock"><span id="sTime">–</span><span id="sTimeK">left</span></div>
+    <div id="goalLine" style="display:none"></div>
     <div class="rule" aria-hidden="true"><i id="bar"></i></div>
-    <div class="ledger"><span><b id="sSwitch">0</b> switches</span><span aria-hidden="true">·</span><span><b id="sUrge">0</b> parked</span><span aria-hidden="true">·</span><span id="searchLedger">0 searches</span></div>
+    <div class="ledger"><span><b id="sSwitch">0</b> switches</span><span aria-hidden="true">·</span><span><b id="sUrge">0</b> parked</span><span aria-hidden="true">·</span><span><b id="sBlocked">0</b> paused</span></div>
     <div id="phaseLine"></div>
     <div id="searchNote" role="status"></div>
-    <div id="planLine" class="hint">Lectures open · feeds blocked</div>
+    <div id="planLine" class="hint">Lectures open · feeds paused</div>
   </section>
 
+  <section id="debrief" aria-label="Session summary"></section>
+
   <section id="setupSec" aria-label="Start a session">
+    <p class="sec-label">Start a session</p>
+    <div style="margin-bottom:8px"><label for="goal">What are you working on? (optional)</label><input id="goal" type="text" maxlength="120" placeholder="e.g. GATE Operating Systems"></div>
     <div class="presets" role="group" aria-label="Session length">
-      <button class="preset" data-min="15">15<small>sprint</small></button>
       <button class="preset" data-min="25">25<small>classic</small></button>
       <button class="preset" data-min="50">50<small>deep</small></button>
+      <button class="preset" data-min="90">90<small>long</small></button>
       <button class="preset" data-min="120">120<small>marathon</small></button>
     </div>
     <div class="row">
@@ -141,7 +142,7 @@ details .body { padding: 0 10px 10px; }
   <section id="parkSec" aria-label="Park an urge" style="display:none">
     <p class="sec-label">Park an urge</p>
     <div class="row" style="margin-top:0">
-      <input id="urge" type="text" placeholder="Name it instead of opening it" style="flex:1" aria-label="Urge to park">
+      <input id="urge" type="text" maxlength="200" placeholder="Name it instead of opening it" style="flex:1" aria-label="Urge to park">
       <button class="btn" id="park">Park</button>
     </div>
     <div id="urges"></div>
@@ -151,10 +152,10 @@ details .body { padding: 0 10px 10px; }
     <summary>Options</summary>
     <div class="body">
       <div class="row" style="margin-top:0">
-        <div style="flex:1"><label for="minutes">Minutes</label><input id="minutes" type="number" value="25" min="15" max="240"></div>
+        <div style="flex:1"><label for="minutes">Minutes</label><input id="minutes" type="number" value="25" min="5" max="240"></div>
         <div style="flex:2"><label for="whitelist">Extra allowed domains</label><input id="whitelist" type="text" placeholder="docs.google.com, coursera.org"></div>
       </div>
-      <div class="hint">Your current tab is pinned automatically on start. When 25 feels easy three days in a row, move to 50.</div>
+      <div class="hint">Your current tab joins the session if it passes the guard. Longer sessions include a break.</div>
     </div>
   </details>
 
@@ -165,7 +166,7 @@ details .body { padding: 0 10px 10px; }
 
   <details>
     <summary>How it works</summary>
-    <div class="body"><div class="hint">Pinned tabs are free to switch between. 15–25 runs as one block; longer sessions add a break. Blocks stay on during breaks. YouTube lectures, search and playlists stay open; Shorts, home and trending are blocked.</div></div>
+    <div class="body"><div class="hint">Pinned tabs are free to switch between. Sessions of 25 min or less run as one block; longer sessions add a break. Pauses stay on during breaks. YouTube lectures, search and playlists stay open; Shorts, home and trending pause.</div></div>
   </details>
 </main>
 <script src="popup.js"></script>
